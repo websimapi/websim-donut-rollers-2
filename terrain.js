@@ -30,17 +30,15 @@ export class InfiniteTerrain {
         // We use a math function where the derivative (slope) oscillates.
         // Base slope is linear descent, Sine wave modulates it.
         // y = -A*z + B*sin(f*z)
-        // Slope = -A + B*f*cos(f*z)
-        // We want Slope to range from roughly -1.0 (steep) to -0.05 (almost flat).
+        // Reduced slope for better control and less uncontrollable speed.
         
         const freq = 0.015; // Wavelength ~ 420 units
-        // To get flat spots, the positive cosine part must almost cancel the negative constant.
-        // constant = -0.5
-        // cosine amp = 0.45
-        // slope range: [-0.95, -0.05] (Always downhill, never uphill)
-        // Amplitude B = 0.45 / freq = 30
         
-        let y = -0.5 * z + 30 * Math.sin(z * freq);
+        // Revised slope: gentler descent
+        // constant = -0.2
+        // amplitude reduced to 15
+        
+        let y = -0.2 * z + 15 * Math.sin(z * freq);
 
         // 2. X-Axis Profile: "Pipe" or "Bowl" shape
         // Keeps player centered.

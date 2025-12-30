@@ -38,7 +38,7 @@ scene.add(dirLight);
 
 // Physics World
 const world = new CANNON.World();
-world.gravity.set(0, -35, 0); // Increased gravity for heavier feel
+world.gravity.set(0, -25, 0); // Adjusted gravity for controlled rolling
 world.solver.iterations = 30; // High iterations for stable heightfield collisions
 world.defaultContactMaterial.friction = 0.3; // Better grip
 world.defaultContactMaterial.restitution = 0.0; // Zero restitution = No bounce (squishy)
