@@ -61,7 +61,7 @@ export class Donut {
         
         this.body = new CANNON.Body({
             mass: 40,
-            material: new CANNON.Material({ friction: 0.1, restitution: 0.0 })
+            material: new CANNON.Material({ friction: 0.5, restitution: 0.0 })
         });
         
         this.body.addShape(cylinderShape, new CANNON.Vec3(0,0,0), q);
@@ -133,7 +133,7 @@ export class Donut {
         
         this.world.addBody(this.body);
         this.body.velocity.set(0, 0, 25);
-        this.body.angularVelocity.set(15, 0, 0);
+        this.body.angularVelocity.set(60, 0, 0); // Fast start spin
 
         this.assets.playSound('jump');
         this.assets.playLoop('roll');
@@ -204,6 +204,9 @@ export class Donut {
             this.legL.rotation.z = Math.sin(time * 4) * 0.2;
             this.legR.rotation.z = Math.cos(time * 4) * 0.2;
         } else {
+            // Extra grip / downforce to stay glued to terrain
+            this.body.applyForce(new CANNON.Vec3(0, -50 * this.body.mass, 0), this.body.position);
+
             // --- Active Boost Application ---
             if (this.boostActive) {
                 this.boostElapsed += dt;

@@ -40,7 +40,7 @@ scene.add(dirLight);
 const world = new CANNON.World();
 world.gravity.set(0, -35, 0); // Increased gravity for heavier feel
 world.solver.iterations = 30; // High iterations for stable heightfield collisions
-world.defaultContactMaterial.friction = 0.15; // Lower friction to prevent catching/launching
+world.defaultContactMaterial.friction = 0.3; // Better grip
 world.defaultContactMaterial.restitution = 0.0; // Zero restitution = No bounce (squishy)
 
 // --- Game State ---
@@ -141,23 +141,22 @@ function screenToWorld(screenX, screenY) {
     
     raycaster.setFromCamera({ x, y }, camera);
     
-    // Create a plane at the donut's current Z position
-    const donutZ = donut.getPosition().z;
-    
-    // Raycast to find intersection with terrain height
     const ray = raycaster.ray;
-    const origin = ray.origin;
-    const direction = ray.direction;
     
-    // Find where ray reaches donut's Z plane approx
-    if (Math.abs(direction.z) > 0.001) {
-        const t = (donutZ - origin.z) / direction.z;
+    // Intersect with approximate ground plane at donut's current base height
+    // This allows the ray to travel "into" the screen (Z-depth) properly
+    const groundY = donut.getPosition().y - 1.0;
+    
+    // t = (targetY - originY) / dirY
+    if (Math.abs(ray.direction.y) > 0.001) {
+        const t = (groundY - ray.origin.y) / ray.direction.y;
         if (t > 0) {
-            const worldX = origin.x + direction.x * t;
-            const worldZ = origin.z + direction.z * t;
-            // Project onto terrain surface
+            const worldX = ray.origin.x + ray.direction.x * t;
+            const worldZ = ray.origin.z + ray.direction.z * t;
+            
+            // Refine height based on actual terrain at this X,Z
             const terrainY = terrain.getHeightAt(worldX, worldZ);
-            return new THREE.Vector3(worldX, terrainY + 0.5, worldZ);
+            return new THREE.Vector3(worldX, terrainY + 0.3, worldZ);
         }
     }
     return null;
