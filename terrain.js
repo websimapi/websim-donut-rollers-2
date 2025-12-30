@@ -34,8 +34,8 @@ export class InfiniteTerrain {
 
         // 2. X-Axis Profile: "Canyon" shape
         // Flat center for rolling (x: -30 to 30), then extremely steep walls
-        // Power of 4 creates a flat floor that curves up sharply into walls
-        y += Math.pow(Math.abs(x) / 25, 4) * 0.5;
+        // Power of 6 creates a flat floor that curves up sharply into walls
+        y += Math.pow(Math.abs(x) / 20, 6) * 0.2;
 
         // 3. Visual Roughness
         y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 4;

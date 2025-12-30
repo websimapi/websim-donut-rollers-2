@@ -208,15 +208,19 @@ function endGesture() {
     const dist = Math.sqrt(dx*dx + dy*dy);
     
     if (gameState === 'PLAYING') {
+        console.log(`[Gesture] End. dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}, dist=${dist.toFixed(1)}, dt=${dt.toFixed(0)}ms`);
+        
         if (dist > 30) {
             // Swipe/Drag Boost
             const maxDist = 300;
             // Normalize and clamp vector
             const vx = Math.min(Math.max(dx / maxDist, -1), 1);
             const vy = Math.min(Math.max(dy / maxDist, -1), 1);
+            console.log(`[Gesture] Swipe Action. Input vx=${vx.toFixed(3)}, vy=${vy.toFixed(3)}`);
             donut.boostWithDirection(vx, vy);
         } else if (dt < 300) {
             // Simple Tap - Small forward hop
+            console.log(`[Gesture] Tap Action.`);
             donut.boostWithDirection(0, -0.4); 
         }
     }
@@ -362,7 +366,8 @@ function animate() {
         const speedSq = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
 
         // Game Over if out of bounds (climbed the mountain)
-        if (Math.abs(pos.x) > 80) {
+        if (Math.abs(pos.x) > 70) {
+            console.log("[Game] Out of bounds X - Wall Climb");
             gameState = 'GAME_OVER';
         }
 

@@ -150,9 +150,9 @@ export class Donut {
         }
         
         this.world.addBody(this.body);
-        // Reduce initial speed
-        this.body.velocity.set(0, 0, 2);
-        this.body.angularVelocity.set(2, 0, 0);
+        // Initial "Peel out" spin
+        this.body.velocity.set(0, 0, 5);
+        this.body.angularVelocity.set(15, 0, 0); // High RPM start
 
         this.assets.playSound('jump');
         this.assets.playLoop('roll');
@@ -162,21 +162,30 @@ export class Donut {
     boostWithDirection(vx, vy) {
         if (!this.isRolling || this.isFlattening) return;
         
-        // Map screen space to world (x: Right, -y (Up): Forward)
-        const inputDir = new CANNON.Vec3(vx, 0, -vy);
+        console.log(`[Donut] Boost Input: vx=${vx.toFixed(3)}, vy=${vy.toFixed(3)}`);
+
+        // Map screen space to world
+        // Camera looks +Z. Screen Right (+vx) corresponds to World Left (-x) in this view.
+        // Screen Up (-vy) corresponds to World Forward (+z).
+        const inputDir = new CANNON.Vec3(-vx, 0, -vy);
         const strength = inputDir.length();
         
-        if (strength < 0.1) return;
+        if (strength < 0.1) {
+             console.log(`[Donut] Boost ignored: too weak (${strength.toFixed(3)})`);
+             return;
+        }
         
         inputDir.normalize();
+        console.log(`[Donut] Boost World Dir: ${inputDir.x.toFixed(2)}, ${inputDir.y.toFixed(2)}, ${inputDir.z.toFixed(2)}`);
 
         // Calculate boost based on swipe length
-        const maxBoostDuration = 0.6; 
-        const minBoostDuration = 0.2; 
+        const maxBoostDuration = 0.5; 
+        const minBoostDuration = 0.1; 
         this.boostDuration = minBoostDuration + (strength * (maxBoostDuration - minBoostDuration));
         
-        const baseBoost = 10; 
-        const maxBoost = 25; 
+        // Reduced boost power to prevent "way way too fast" speeds
+        const baseBoost = 5; 
+        const maxBoost = 15; 
         this.boostMagnitude = baseBoost + (strength * (maxBoost - baseBoost));
         
         this.boostDirection.copy(inputDir);
@@ -308,8 +317,8 @@ export class Donut {
                 }
                 
                 // 5. Downforce (Grip)
-                // Keeps the sphere grounded on slopes
-                this.body.applyForce(new CANNON.Vec3(0, -40 * this.body.mass, 0), this.body.position);
+                // Keeps the sphere grounded on slopes - Increased for better grip
+                this.body.applyForce(new CANNON.Vec3(0, -80 * this.body.mass, 0), this.body.position);
             }
 
             // --- Trail Update ---
