@@ -56,25 +56,38 @@ export class Donut {
         this.trail = new Trail(scene, 0xffffff);
 
         // --- Physics ---
-        const radius = 1.45;
-        const width = 0.9;
+        // Use a composite body:
+        // 1. A Sphere for the main ground contact (Smoothest rolling behavior, no edge catching)
+        // 2. A smaller Cylinder to represent the physical bounds if it falls over completely
         
-        const cylinderShape = new CANNON.Cylinder(radius, radius, width, 24);
-        const q = new CANNON.Quaternion();
-        q.setFromAxisAngle(new CANNON.Vec3(0,0,1), -Math.PI / 2);
+        const sphereRadius = 1.45;
+        const sphereShape = new CANNON.Sphere(sphereRadius);
         
         this.body = new CANNON.Body({
-            mass: 40,
-            material: new CANNON.Material({ friction: 0.8, restitution: 0.0 })
+            mass: 50, // Slightly heavier for better momentum
+            material: new CANNON.Material({ friction: 0.3, restitution: 0.0 }) // Lower friction to prevent sticking, we handle grip manually
         });
         
+        // Add Sphere (Main roller)
+        this.body.addShape(sphereShape, new CANNON.Vec3(0, 0, 0));
+
+        // Add hidden Cylinder (for falling collision bounds)
+        // Slightly smaller radius so it doesn't interfere with smooth rolling
+        const cylRadius = 1.2;
+        const cylWidth = 0.9;
+        const cylinderShape = new CANNON.Cylinder(cylRadius, cylRadius, cylWidth, 16);
+        const q = new CANNON.Quaternion();
+        q.setFromAxisAngle(new CANNON.Vec3(0,0,1), -Math.PI / 2); // Align with X-axis
         this.body.addShape(cylinderShape, new CANNON.Vec3(0,0,0), q);
+
         this.body.position.copy(position);
         
-        this.body.linearDamping = 0.05;
-        this.body.angularDamping = 0.6; // Higher damping for stability
-        this.body.ccdSpeedThreshold = 0.5;
-        this.body.ccdIterations = 10;
+        this.body.linearDamping = 0.01; // Rolling efficiency
+        this.body.angularDamping = 0.1; // Let it spin freely
+        
+        // CCD to prevent tunneling at high speeds
+        this.body.ccdSpeedThreshold = 1.0;
+        this.body.ccdIterations = 5;
     }
 
     _addCharacterFeatures() {
@@ -147,54 +160,52 @@ export class Donut {
 
     // New boost system - no cooldown, follows swipe path
     boostWithDirection(vx, vy) {
-        if (!this.isRolling) return;
+        if (!this.isRolling || this.isFlattening) return;
         
         // Map screen space to world (x: Right, -y (Up): Forward)
         const inputDir = new CANNON.Vec3(vx, 0, -vy);
         const strength = inputDir.length();
         
-        // Minimum threshold for tap
         if (strength < 0.1) return;
         
         inputDir.normalize();
 
         // Calculate boost based on swipe length
-        // Longer swipe = longer boost duration and stronger magnitude
-        const maxBoostDuration = 0.8; // Max 0.8 seconds
-        const minBoostDuration = 0.15; // Min for tap
+        const maxBoostDuration = 0.8; 
+        const minBoostDuration = 0.2; 
         this.boostDuration = minBoostDuration + (strength * (maxBoostDuration - minBoostDuration));
         
-        // Boost magnitude scales with swipe length
-        const baseBoost = 15; // Small boost
-        const maxBoost = 35; // Max boost for longest swipe
+        const baseBoost = 40; 
+        const maxBoost = 80; 
         this.boostMagnitude = baseBoost + (strength * (maxBoost - baseBoost));
         
-        // Set boost direction
         this.boostDirection.copy(inputDir);
-        
-        // Activate boost
         this.boostActive = true;
         this.boostElapsed = 0;
         
-        // Gentle orientation correction (not a snap)
-        const currentDir = new THREE.Vector3(
-            this.body.velocity.x,
-            0,
-            this.body.velocity.z
-        ).normalize();
-        
-        // If we have existing velocity, blend with it
-        if (currentDir.length() > 0.1) {
-            const targetDir = new THREE.Vector3(inputDir.x, 0, inputDir.z);
-            // Blend 30% new direction, 70% current
-            currentDir.lerp(targetDir, 0.3).normalize();
-            this.boostDirection.set(currentDir.x, 0, currentDir.z);
+        // --- Strong Orientation Correction on Boost ---
+        // Auto-align the physics velocity to the swipe direction
+        const speed = this.body.velocity.length();
+        if (speed > 1) {
+            // Redirect current momentum partially to new direction
+            const newVel = inputDir.clone().scale(speed);
+            // Blend: 60% new direction, 40% old (Smooth turn but responsive)
+            this.body.velocity.lerp(newVel, 0.6, this.body.velocity);
         }
-
-        // Reset instability on boost
+        
+        // Reset instability
         this.isUnstable = false;
         this.isFlattening = false;
         this.flattenFactor = 0;
+        
+        // Re-align the donut visually/physically to face the new direction immediately
+        // Compute new rotation quaternion where local X (axle) is perpendicular to movement
+        const moveDir = new THREE.Vector3(inputDir.x, 0, inputDir.z);
+        const up = new THREE.Vector3(0, 1, 0);
+        const newAxle = new THREE.Vector3().crossVectors(up, moveDir).normalize();
+        
+        // We can't snap physics instantly without glitches, but we can apply a strong torque impulse
+        // to help the stabilizer in the update loop
         
         this.assets.playSound('jump');
     }
@@ -210,96 +221,106 @@ export class Donut {
             this.legL.rotation.z = Math.sin(time * 4) * 0.2;
             this.legR.rotation.z = Math.cos(time * 4) * 0.2;
         } else {
-            // --- Trail Update ---
-            this.trail.update(this.meshGroup.position, this.meshGroup.quaternion);
-
-            // --- Gentle Downforce ---
-            // Light downforce to stick to terrain without bouncing
-            this.body.applyForce(new CANNON.Vec3(0, -20 * this.body.mass, 0), this.body.position);
-
-            // --- Boost Logic ---
-            if (this.boostActive) {
-                this.boostElapsed += dt;
-                const progress = this.boostElapsed / this.boostDuration;
-                if (progress < 1.0) {
-                    const eased = 1 - Math.pow(1 - progress, 3);
-                    const currentBoost = this.boostMagnitude * (1 - eased);
-                    const force = this.boostDirection.clone().scale(currentBoost * this.body.mass);
-                    this.body.applyForce(force, this.body.position);
-                } else {
-                    this.boostActive = false;
-                }
-            }
-
-            // --- GENTLE STABILITY CONTROL ---
-            // Calculate the axle vector in world space
+            const vel = this.body.velocity;
+            const speed = vel.length();
+            
+            // --- Determine Axle and Up ---
             const axle = new CANNON.Vec3(1, 0, 0);
             this.body.quaternion.vmult(axle, axle);
-            
-            // Prevent Tumble/Wobble - gentler approach
-            const omega = this.body.angularVelocity;
-            
-            // Component along axle (Good - this is rolling)
-            const omegaAxle = axle.clone().scale(omega.dot(axle));
-            
-            // Component perpendicular to axle (Bad - this is wobble/tumble)
-            const omegaWobble = omega.vsub(omegaAxle);
-            
-            // Dampen wobble gently
-            this.body.torque.vsub(omegaWobble.scale(80), this.body.torque);
-
-            // --- Gentle Orientation Correction ---
-            // Keep the axle roughly horizontal
             const up = new CANNON.Vec3(0, 1, 0);
+
+            // --- Check Stability (Flattening Logic) ---
+            // Dot product of Axle and Up. 0 = Horizontal (Good), 1 or -1 = Vertical (Fallen)
             const tilt = axle.dot(up);
             
-            if (Math.abs(tilt) > 0.1) {
+            // Penny Flatten Logic:
+            // If tilt > 0.7 (approx 45 degrees) AND we aren't boosting, we start to lose it.
+            // If speed is low, it's easier to fall.
+            if (!this.boostActive && Math.abs(tilt) > 0.8) {
+                this.isFlattening = true;
+            }
+
+            // If flattening, we stop the "ball" behavior and let friction kill it
+            if (this.isFlattening) {
+                // Apply heavy angular damping to stop rolling
+                this.body.angularDamping = 0.9;
+                this.body.linearDamping = 0.5;
+                
+                // No stabilization torque -> let it fall
+                // It will naturally hit the inner cylinder collider
+                
+                // If basically stopped, stay stopped
+                if (speed < 0.5) {
+                    this.body.angularVelocity.set(0,0,0);
+                    this.body.velocity.set(0,0,0);
+                }
+            } else {
+                // --- NORMAL ROLLING PHYSICS ---
+                this.body.angularDamping = 0.1;
+                this.body.linearDamping = 0.01;
+
+                // 1. STABILIZATION TORQUE (Keep Axle Horizontal)
+                // Use the sphere like a wheel. 
+                // We apply torque to rotate the sphere towards upright.
+                
                 const correctionAxis = new CANNON.Vec3();
-                axle.cross(up, correctionAxis);
+                axle.cross(up, correctionAxis); // Vector pointing forward/backward
                 correctionAxis.normalize();
                 
-                // Gentle correction torque
-                const correctionTorque = correctionAxis.scale(tilt * 50);
+                // Strength of correction depends on speed. 
+                // Gyroscopic effect: Faster = More stable.
+                const stabilityForce = 150 + (speed * 10);
+                
+                // Apply torque proportional to tilt
+                const correctionTorque = correctionAxis.scale(tilt * stabilityForce);
                 this.body.torque.vadd(correctionTorque, this.body.torque);
+
+                // 2. WOBBLE DAMPING
+                // Remove angular velocity that isn't along the axle (rolling) or global Y (turning)
+                const omega = this.body.angularVelocity;
+                const omegaAxle = axle.clone().scale(omega.dot(axle)); // Rolling spin
+                const omegaWobble = omega.vsub(omegaAxle); // Everything else
+                
+                // Dampen the wobble strongly
+                this.body.torque.vsub(omegaWobble.scale(50), this.body.torque);
+                
+                // 3. STEERING TORQUE
+                // Rotate around Global Y (Yaw)
+                if (Math.abs(this.steeringInput) > 0.01) {
+                    const steerStrength = 15;
+                    // Tilt the donut into the turn slightly?
+                    // For now just yaw torque
+                    this.body.torque.y -= this.steeringInput * steerStrength;
+                }
+                
+                // 4. BOOST & MOVEMENT
+                if (this.boostActive) {
+                    this.boostElapsed += dt;
+                    const progress = this.boostElapsed / this.boostDuration;
+                    if (progress < 1.0) {
+                        const eased = 1 - Math.pow(1 - progress, 3);
+                        const currentBoost = this.boostMagnitude * (1 - eased);
+                        const force = this.boostDirection.clone().scale(currentBoost * this.body.mass);
+                        this.body.applyForce(force, this.body.position);
+                    } else {
+                        this.boostActive = false;
+                    }
+                }
+                
+                // 5. Downforce (Grip)
+                // Keeps the sphere grounded on slopes
+                this.body.applyForce(new CANNON.Vec3(0, -40 * this.body.mass, 0), this.body.position);
             }
 
-            // --- Steering ---
-            if (Math.abs(this.steeringInput) > 0.01) {
-                const turnForce = 40;
-                this.body.applyForce(
-                    new CANNON.Vec3(this.steeringInput * turnForce, 0, 0),
-                    this.body.position
-                );
-            }
-
-            // --- Sideways Friction (prevent sliding) ---
-            const vel = this.body.velocity;
-            const forwardDir = new CANNON.Vec3();
-            axle.cross(up, forwardDir);
-            forwardDir.normalize();
-            
-            const forwardSpeed = vel.dot(forwardDir);
-            const forwardVel = forwardDir.scale(forwardSpeed);
-            const slideVel = vel.vsub(forwardVel);
-            
-            // Gentle slide resistance
-            this.body.applyForce(slideVel.scale(-5 * this.body.mass), this.body.position);
-
-            // --- Speed Limit ---
-            const speed = vel.length();
-            const MAX_SPEED = 40; // Hard cap reduced
-            if (speed > MAX_SPEED) {
-                const scale = MAX_SPEED / speed;
-                this.body.velocity.scale(scale, this.body.velocity);
-            }
+            // --- Trail Update ---
+            this.trail.update(this.meshGroup.position, this.meshGroup.quaternion);
 
             // --- Sync Visuals ---
             if (!isNaN(this.body.position.x)) {
                 this.meshGroup.position.copy(this.body.position);
                 this.meshGroup.quaternion.copy(this.body.quaternion);
             }
-
-            // Hide limbs during roll
+            
             if (this.limbsGroup.visible) {
                 this.limbsGroup.visible = false;
             }
