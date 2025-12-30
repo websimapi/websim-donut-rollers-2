@@ -35,10 +35,10 @@ export class InfiniteTerrain {
         const freq = 0.015; // Wavelength ~ 420 units
         
         // Revised slope: gentler descent
-        // constant = -0.2
-        // amplitude reduced to 15
+        // constant = -0.1
+        // amplitude reduced to 12
         
-        let y = -0.2 * z + 15 * Math.sin(z * freq);
+        let y = -0.1 * z + 12 * Math.sin(z * freq);
 
         // 2. X-Axis Profile: "Pipe" or "Bowl" shape
         // Keeps player centered.

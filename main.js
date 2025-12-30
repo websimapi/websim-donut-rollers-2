@@ -38,7 +38,7 @@ scene.add(dirLight);
 
 // Physics World
 const world = new CANNON.World();
-world.gravity.set(0, -40, 0); // Stronger gravity for "heavy" feel
+world.gravity.set(0, -25, 0); // Reduced gravity for more manageable speed
 world.solver.iterations = 20; // Good balance for performance
 world.defaultContactMaterial.friction = 0.3; // Base friction
 world.defaultContactMaterial.restitution = 0.0; // No bounce
@@ -424,18 +424,17 @@ function animate() {
         
         // Safety check to prevent camera NaN bugs causing black/blue screen
         if (targetPos && !isNaN(targetPos.x) && !isNaN(targetPos.y) && !isNaN(targetPos.z)) {
-            // Offset camera higher and slightly closer for a more top-down third-person view
-            const offset = new THREE.Vector3(0, 18, -16); 
+            // Locked camera offset for stable tracking
+            // Higher and further back to keep view clear
+            const offset = new THREE.Vector3(0, 15, -20); 
             
-            // Smooth follow
-            const idealPos = new THREE.Vector3().copy(targetPos).add(offset);
+            // Rigid follow (no lerp lag) to keep donut always in view
+            const camPos = new THREE.Vector3().copy(targetPos).add(offset);
             
-            // Constrain camera to reasonable bounds
-            idealPos.x = Math.max(-60, Math.min(60, idealPos.x));
-            idealPos.y = Math.max(5, Math.min(100, idealPos.y));
+            // Soft limits on camera height to avoid clipping terrain
+            camPos.y = Math.max(targetPos.y + 5, camPos.y);
 
-            // Use stiffer lerp to prevent losing the player at high speeds
-            camera.position.lerp(idealPos, 0.2);
+            camera.position.copy(camPos);
             camera.lookAt(targetPos);
             
             // Update Light
