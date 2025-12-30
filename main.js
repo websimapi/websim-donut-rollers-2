@@ -38,7 +38,7 @@ scene.add(dirLight);
 
 // Physics World
 const world = new CANNON.World();
-world.gravity.set(0, -25, 0); // Reduced gravity for more manageable speed
+world.gravity.set(0, -50, 0); // Strong gravity to keep grounded
 world.solver.iterations = 20; // Good balance for performance
 world.defaultContactMaterial.friction = 0.3; // Base friction
 world.defaultContactMaterial.restitution = 0.0; // No bounce
@@ -361,30 +361,23 @@ function animate() {
         const dy = pos.y - terrainY;
         const speedSq = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
 
-        // Constrain X position (keep donut on track)
-        const maxX = 50; 
-        if (Math.abs(pos.x) > maxX) {
-            // Push back toward center
-            const pushForce = (Math.abs(pos.x) - maxX) * 100;
-            const direction = pos.x > 0 ? -1 : 1;
-            donut.body.applyForce(
-                new CANNON.Vec3(direction * pushForce * donut.body.mass, 0, 0),
-                donut.body.position
-            );
+        // Game Over if out of bounds (climbed the mountain)
+        if (Math.abs(pos.x) > 80) {
+            gameState = 'GAME_OVER';
         }
 
         // Prevent excessive height (flying away)
-        const maxHeight = terrainY + 30;
+        // Hard clamp to prevent glitches
+        const maxHeight = terrainY + 15;
         if (pos.y > maxHeight) {
-            // Pull down aggressively
             const excessHeight = pos.y - maxHeight;
             donut.body.applyForce(
-                new CANNON.Vec3(0, -excessHeight * 50 * donut.body.mass, 0),
+                new CANNON.Vec3(0, -excessHeight * 200 * donut.body.mass, 0),
                 donut.body.position
             );
-            // Dampen upward velocity
+            // Kill upward velocity
             if (donut.body.velocity.y > 0) {
-                donut.body.velocity.y *= 0.5;
+                donut.body.velocity.y = 0;
             }
         }
 

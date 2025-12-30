@@ -82,8 +82,8 @@ export class Donut {
 
         this.body.position.copy(position);
         
-        this.body.linearDamping = 0.15; // Increased drag to prevent runaway speed
-        this.body.angularDamping = 0.1; // Let it spin freely
+        this.body.linearDamping = 0.5; // Heavy drag
+        this.body.angularDamping = 0.5; // Heavy rotational drag
         
         // CCD to prevent tunneling at high speeds
         this.body.ccdSpeedThreshold = 1.0;
@@ -151,8 +151,8 @@ export class Donut {
         
         this.world.addBody(this.body);
         // Reduce initial speed
-        this.body.velocity.set(0, 0, 8);
-        this.body.angularVelocity.set(5, 0, 0);
+        this.body.velocity.set(0, 0, 2);
+        this.body.angularVelocity.set(2, 0, 0);
 
         this.assets.playSound('jump');
         this.assets.playLoop('roll');
@@ -175,8 +175,8 @@ export class Donut {
         const minBoostDuration = 0.2; 
         this.boostDuration = minBoostDuration + (strength * (maxBoostDuration - minBoostDuration));
         
-        const baseBoost = 20; 
-        const maxBoost = 45; 
+        const baseBoost = 10; 
+        const maxBoost = 25; 
         this.boostMagnitude = baseBoost + (strength * (maxBoost - baseBoost));
         
         this.boostDirection.copy(inputDir);

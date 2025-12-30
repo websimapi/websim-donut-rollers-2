@@ -8,7 +8,7 @@ export class InfiniteTerrain {
         this.world = world;
         this.chunks = [];
         this.chunkLength = 200; // Longer chunks
-        this.chunkWidth = 150;  // Wider terrain
+        this.chunkWidth = 300;  // Much wider terrain for mountain sides
         
         // Physics material
         this.mat = new CANNON.Material();
@@ -26,28 +26,19 @@ export class InfiniteTerrain {
 
     // Mathematical definition of the mountain shape
     getHeightAt(x, z) {
-        // 1. Z-Axis Profile: Alternating Steep Drops and Flat Straightaways
-        // We use a math function where the derivative (slope) oscillates.
-        // Base slope is linear descent, Sine wave modulates it.
-        // y = -A*z + B*sin(f*z)
-        // Reduced slope for better control and less uncontrollable speed.
+        const freq = 0.015; 
         
-        const freq = 0.015; // Wavelength ~ 420 units
-        
-        // Revised slope: gentler descent
-        // constant = -0.1
-        // amplitude reduced to 12
-        
-        let y = -0.1 * z + 12 * Math.sin(z * freq);
+        // 1. Z-Axis Profile: Significantly reduced slope
+        // Much slower base speed
+        let y = -0.04 * z + 8 * Math.sin(z * freq);
 
-        // 2. X-Axis Profile: "Pipe" or "Bowl" shape
-        // Keeps player centered.
-        // Gentle quadratic curve.
-        y += Math.pow(x / 15, 2) * 1.5;
+        // 2. X-Axis Profile: "Canyon" shape
+        // Flat center for rolling (x: -30 to 30), then extremely steep walls
+        // Power of 4 creates a flat floor that curves up sharply into walls
+        y += Math.pow(Math.abs(x) / 25, 4) * 0.5;
 
-        // 3. Banking/Camber
-        // Bank turns slightly based on the terrain waviness to keep it interesting visually
-        y += Math.cos(z * 0.02) * Math.sin(x * 0.05) * 2;
+        // 3. Visual Roughness
+        y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 4;
 
         return y;
     }
