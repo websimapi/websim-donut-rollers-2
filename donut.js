@@ -71,8 +71,8 @@ export class Donut {
         this.body.addShape(cylinderShape, new CANNON.Vec3(0,0,0), q);
         this.body.position.copy(position);
         
-        this.body.linearDamping = 0.01;
-        this.body.angularDamping = 0.4; // High damping to prevent spinning out
+        this.body.linearDamping = 0.05;
+        this.body.angularDamping = 0.6; // Higher damping for stability
         this.body.ccdSpeedThreshold = 0.5;
         this.body.ccdIterations = 10;
     }
@@ -213,9 +213,9 @@ export class Donut {
             // --- Trail Update ---
             this.trail.update(this.meshGroup.position, this.meshGroup.quaternion);
 
-            // --- Downforce ---
-            // Constant downforce to stick to terrain
-            this.body.applyForce(new CANNON.Vec3(0, -60 * this.body.mass, 0), this.body.position);
+            // --- Gentle Downforce ---
+            // Light downforce to stick to terrain without bouncing
+            this.body.applyForce(new CANNON.Vec3(0, -20 * this.body.mass, 0), this.body.position);
 
             // --- Boost Logic ---
             if (this.boostActive) {
@@ -231,13 +231,12 @@ export class Donut {
                 }
             }
 
-            // --- STRICT STABILITY CONTROL ---
+            // --- GENTLE STABILITY CONTROL ---
             // Calculate the axle vector in world space
             const axle = new CANNON.Vec3(1, 0, 0);
             this.body.quaternion.vmult(axle, axle);
             
-            // Prevent Tumble/Wobble
-            // Decompose angular velocity
+            // Prevent Tumble/Wobble - gentler approach
             const omega = this.body.angularVelocity;
             
             // Component along axle (Good - this is rolling)
@@ -246,50 +245,45 @@ export class Donut {
             // Component perpendicular to axle (Bad - this is wobble/tumble)
             const omegaWobble = omega.vsub(omegaAxle);
             
-            // Kill the wobble aggressively
-            this.body.torque.vsub(omegaWobble.scale(300), this.body.torque);
+            // Dampen wobble gently
+            this.body.torque.vsub(omegaWobble.scale(80), this.body.torque);
 
-            // --- Orientation Correction ---
-            // Keep the axle flat (parallel to X-Z plane mostly)
+            // --- Gentle Orientation Correction ---
+            // Keep the axle roughly horizontal
             const up = new CANNON.Vec3(0, 1, 0);
-            const tilt = axle.dot(up); // 0 is flat, 1 is vertical (fallen over)
+            const tilt = axle.dot(up);
             
-            if (Math.abs(tilt) > 0.05) {
-                // Apply torque to flatten axle
+            if (Math.abs(tilt) > 0.1) {
                 const correctionAxis = new CANNON.Vec3();
-                axle.cross(up, correctionAxis); // Vector pointing forward/back
+                axle.cross(up, correctionAxis);
                 correctionAxis.normalize();
                 
-                // Strong correction torque
-                const correctionTorque = correctionAxis.scale(tilt * 200);
+                // Gentle correction torque
+                const correctionTorque = correctionAxis.scale(tilt * 50);
                 this.body.torque.vadd(correctionTorque, this.body.torque);
             }
 
             // --- Steering ---
             if (Math.abs(this.steeringInput) > 0.01) {
-                const turnForce = 60;
+                const turnForce = 40;
                 this.body.applyForce(
                     new CANNON.Vec3(this.steeringInput * turnForce, 0, 0),
                     this.body.position
                 );
-                
-                // Bank into turn slightly (visual feel)
-                const bankTorque = new CANNON.Vec3(0, 0, -this.steeringInput * 10);
-                this.body.torque.vadd(bankTorque, this.body.torque);
             }
 
             // --- Sideways Friction (prevent sliding) ---
             const vel = this.body.velocity;
             const forwardDir = new CANNON.Vec3();
-            axle.cross(up, forwardDir); // Roughly forward
+            axle.cross(up, forwardDir);
             forwardDir.normalize();
             
             const forwardSpeed = vel.dot(forwardDir);
             const forwardVel = forwardDir.scale(forwardSpeed);
             const slideVel = vel.vsub(forwardVel);
             
-            // Apply force against sliding
-            this.body.applyForce(slideVel.scale(-10 * this.body.mass), this.body.position);
+            // Gentle slide resistance
+            this.body.applyForce(slideVel.scale(-5 * this.body.mass), this.body.position);
 
             // --- Speed Limit ---
             const speed = vel.length();
