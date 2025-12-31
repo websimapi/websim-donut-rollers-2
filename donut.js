@@ -246,12 +246,6 @@ export class Donut {
             this.legR.rotation.z = Math.cos(time * 4) * 0.2;
         } else {
             const vel = this.body.velocity;
-
-            // Force motion to stay roughly straight downhill along +Z
-            // No sideways drift; never roll backwards up the hill.
-            vel.x = 0;
-            if (vel.z < 0) vel.z = -vel.z;
-
             const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
 
             // --- Path Following / Speed Boost on Path ---
@@ -300,12 +294,40 @@ export class Donut {
                             desiredSpeed += 10; // extra push when we ride the line
                         }
 
-                        // Blend velocity toward path direction
+                        // Desired velocity along the path
                         const targetVx = nx * desiredSpeed;
                         const targetVz = nz * desiredSpeed;
 
-                        vel.x = targetVx;
-                        vel.z = targetVz;
+                        // Smoothly accelerate toward desired velocity instead of snapping
+                        const dvx = targetVx - vel.x;
+                        const dvz = targetVz - vel.z;
+
+                        const alignStrength = onPath ? 6 : 3; // stronger pull when we're on the line
+                        const mass = this.body.mass;
+
+                        // Apply force in XZ plane to steer toward path direction
+                        const forceDir = new CANNON.Vec3(dvx * alignStrength * mass, 0, dvz * alignStrength * mass);
+                        this.body.applyForce(forceDir, this.body.position);
+
+                        // Gentle attraction back toward the path center line
+                        const p = this.pathPoints[this.pathIndex];
+                        const offsetX = p.x - pos.x;
+                        const offsetZ = p.z - pos.z;
+
+                        // Component of offset perpendicular to path tangent
+                        const proj = offsetX * nx + offsetZ * nz;
+                        const perpX = offsetX - proj * nx;
+                        const perpZ = offsetZ - proj * nz;
+
+                        const distPerpSq = perpX * perpX + perpZ * perpZ;
+                        if (distPerpSq > 0.0001) {
+                            const distPerp = Math.sqrt(distPerpSq);
+                            const maxPull = 12;
+                            const pullStrength = Math.min(maxPull, distPerp * 3);
+                            const pullX = (perpX / distPerp) * pullStrength * mass;
+                            const pullZ = (perpZ / distPerp) * pullStrength * mass;
+                            this.body.applyForce(new CANNON.Vec3(pullX, 0, pullZ), this.body.position);
+                        }
                     }
                 }
 
@@ -315,7 +337,7 @@ export class Donut {
                 }
             }
 
-            // No steering torque or tilt logic – keep donut upright and simple
+            // Basic damping; let physics handle the tilt and motion
             this.body.angularDamping = 0.1;
             this.body.linearDamping = 0.01;
             this.body.torque.set(0, 0, 0);
@@ -346,11 +368,11 @@ export class Donut {
             if (vel.y > 20) vel.y = 20;
             if (vel.y < -35) vel.y = -35;
 
-            // --- Locked Upright Rolling ---
+            // --- Locked Upright Rolling with Visual Banking ---
             const rollRadius = 1.3;
             this.rollAngle = (this.rollAngle + (speed * dt) / rollRadius) % (Math.PI * 2);
 
-            // Build upright quaternion that only spins around the X axle
+            // Physics stays as a simple upright wheel rolling around X
             const q = new CANNON.Quaternion();
             q.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), this.rollAngle);
             this.body.quaternion.copy(q);
@@ -373,10 +395,29 @@ export class Donut {
             );
             this.trail.update(trailPos, trailQuat);
 
-            // --- Sync Visuals ---
+            // --- Sync Visuals with extra tilt based on lateral motion ---
             if (!isNaN(this.body.position.x)) {
                 this.meshGroup.position.copy(this.body.position);
-                this.meshGroup.quaternion.copy(this.body.quaternion);
+
+                // Base rotation from physics (upright rolling)
+                const baseQuat = new THREE.Quaternion(
+                    this.body.quaternion.x,
+                    this.body.quaternion.y,
+                    this.body.quaternion.z,
+                    this.body.quaternion.w
+                );
+
+                // Bank/tilt the donut visually when it slides sideways
+                const lateralSpeed = this.body.velocity.x;
+                const maxBank = 0.6; // radians
+                const bankAngle = THREE.MathUtils.clamp(lateralSpeed * 0.05, -maxBank, maxBank);
+
+                const bankQuat = new THREE.Quaternion();
+                // Bank around local Z axis so the donut leans into the turn
+                bankQuat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -bankAngle);
+
+                const finalQuat = baseQuat.clone().multiply(bankQuat);
+                this.meshGroup.quaternion.copy(finalQuat);
             }
             
             if (this.limbsGroup.visible) {
