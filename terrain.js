@@ -26,16 +26,17 @@ export class InfiniteTerrain {
 
     // Mathematical definition of the mountain shape
     getHeightAt(x, z) {
+        // Safe start zone logic:
+        // Ensure the first 100m (z < 100) is smooth and consistently sloped
+        // to prevent wobbles during the launch.
+        const startFade = Math.min(1.0, Math.max(0, (z - 100) / 100)); // 0 until z=100, ramps to 1 at z=200
+
         const freq = 0.015; 
         
-        // 0. Smooth launch lane for the first 100m straight ahead in the center
-        // Pure gentle downhill line: no bumps, no canyon walls, no noise
-        if (z >= 0 && z <= 100 && Math.abs(x) < 5) {
-            return -0.01 * z;
-        }
-
-        // 1. Z-Axis Profile: Gentler slope
-        let y = -0.01 * z + 3 * Math.sin(z * freq);
+        // 1. Z-Axis Profile
+        // Constant steeper base slope for good momentum (-0.15 is roughly 8.5 degrees downhill)
+        // We blend in the sine wave undulations only after the start zone
+        let y = -0.15 * z + (3 * Math.sin(z * freq) * startFade);
 
         // 2. X-Axis Profile: "Canyon" shape
         // Wide flat center for rolling, then steep walls
@@ -47,8 +48,11 @@ export class InfiniteTerrain {
 
         // 3. Visual Roughness
         // Dampen noise near center (x=0) to prevent drift
+        // Also dampen noise near the start to ensure smooth launch
         // 0.0 at x=0, ramps to 1.0 at x=20
-        const centerDamp = Math.min(1.0, Math.max(0, (Math.abs(x) - 10) / 10)); 
+        let centerDamp = Math.min(1.0, Math.max(0, (Math.abs(x) - 10) / 10));
+        centerDamp *= startFade; // Apply start fade to roughness too
+        
         y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 2 * centerDamp;
 
         return y;
