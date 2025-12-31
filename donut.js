@@ -14,6 +14,7 @@ export class Donut {
         this.isUnstable = false;
         this.isFlattening = false;
         this.flattenFactor = 0;
+        this.hasFallen = false;
         
         // Boost tracking - following swipe path
         this.boostActive = false;
@@ -156,6 +157,7 @@ export class Donut {
         this.isRolling = true;
         this.isUnstable = false;
         this.isFlattening = false;
+        this.hasFallen = false;
         this.trail.reset();
         
         this.meshGroup.rotation.set(0, 0, 0); 
@@ -321,10 +323,11 @@ export class Donut {
                 // No stabilization torque -> let it fall
                 // It will naturally hit the inner cylinder collider
                 
-                // If basically stopped, stay stopped
+                // If basically stopped, mark as fallen
                 if (speed < 0.5) {
                     this.body.angularVelocity.set(0,0,0);
                     this.body.velocity.set(0,0,0);
+                    this.hasFallen = true;
                 }
             } else {
                 // --- NORMAL ROLLING PHYSICS ---

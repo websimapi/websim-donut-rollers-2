@@ -84,6 +84,35 @@ body {
     text-shadow: 1px 1px 2px black;
 }
 
+#path-bar {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 120px;
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 8px rgba(255, 105, 180, 0.6);
+    overflow: hidden;
+}
+
+#path-bar-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ffe4f2, #ff69b4, #ffe4f2);
+    background-size: 200% 100%;
+    box-shadow: 0 0 10px rgba(255, 105, 180, 0.9);
+    transform-origin: left center;
+    transform: scaleX(1);
+    animation: pathFlow 1.2s linear infinite;
+}
+
+@keyframes pathFlow {
+    0% { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+}
+
 #controls-hint {
     position: absolute;
     bottom: 50px;

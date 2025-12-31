@@ -43,10 +43,19 @@ world.solver.iterations = 20; // Good balance for performance
 world.defaultContactMaterial.friction = 0.3; // Base friction
 world.defaultContactMaterial.restitution = 0.0; // No bounce
 
-// --- Game State ---
+ // --- Game State ---
 let gameState = 'IDLE'; // IDLE, STARTING, PLAYING, GAME_OVER
 let input = { x: 0 }; // -1 to 1
 let stoppedTime = 0; // how long we've been basically stopped
+
+// Path drawing energy (meters of path available)
+const maxPathCharge = 10;
+let pathCharge = maxPathCharge;
+let currentGesturePathLength = 0;
+
+// Path bar UI
+const pathBar = document.getElementById('path-bar');
+const pathBarFill = document.getElementById('path-bar-fill');
 
 // --- Audio System ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -94,7 +103,7 @@ const terrain = new InfiniteTerrain(scene, world);
 const startY = terrain.getHeightAt(0, 0) + 5; 
 const donut = new Donut(scene, world, new THREE.Vector3(0, startY, 0), assets);
 
-// --- 3D Path Visualization ---
+ // --- 3D Path Visualization ---
 let pathLine = null;
 let pathPoints3D = [];
 
@@ -104,7 +113,7 @@ function createPathLine() {
         pathLine.geometry.dispose();
     }
     if (pathPoints3D.length < 2) return;
-    
+
     const geometry = new THREE.BufferGeometry().setFromPoints(pathPoints3D);
     const material = new THREE.LineBasicMaterial({ 
         color: 0xff69b4, 
@@ -175,21 +184,52 @@ const swipePath = document.getElementById('swipe-path');
 function updateSwipeVisuals() {
     if (!gesture.active || gesture.points.length < 2) {
         swipePath.setAttribute('d', '');
-        clearPathLine();
+        // Keep existing 3D path line until it is followed/finished
+        currentGesturePathLength = 0;
         return;
     }
-    // Update 2D SVG path
-    const d = gesture.points.reduce((acc, p, i) => {
-        return acc + (i === 0 ? `M ${p.x} ${p.y}` : ` L ${p.x} ${p.y}`);
-    }, '');
-    swipePath.setAttribute('d', d);
+
+    // --- Build 3D path with length limited by available charge ---
+    let newPath3D = [];
+    let usedGesturePoints = [];
+    let accumulatedLen = 0;
+    let lastWorld = null;
+
+    for (let i = 0; i < gesture.points.length; i++) {
+        const p2d = gesture.points[i];
+        const world = screenToWorld(p2d.x, p2d.y);
+        if (!world) continue;
+
+        if (lastWorld) {
+            const segLen = world.distanceTo(lastWorld);
+            if (accumulatedLen + segLen > pathCharge) {
+                break; // cannot draw beyond available charge
+            }
+            accumulatedLen += segLen;
+        }
+
+        newPath3D.push(world);
+        usedGesturePoints.push(p2d);
+        lastWorld = world;
+    }
+
+    // Trim gesture points to what we can afford
+    gesture.points = usedGesturePoints;
+    currentGesturePathLength = accumulatedLen;
+
+    // Update 2D SVG path from trimmed gesture.points
+    if (gesture.points.length >= 2) {
+        const d = gesture.points.reduce((acc, p, i) => {
+            return acc + (i === 0 ? `M ${p.x} ${p.y}` : ` L ${p.x} ${p.y}`);
+        }, '');
+        swipePath.setAttribute('d', d);
+    } else {
+        swipePath.setAttribute('d', '');
+    }
 
     // Update 3D terrain path
     if (gameState === 'PLAYING') {
-        pathPoints3D = gesture.points
-            .map(p => screenToWorld(p.x, p.y))
-            .filter(p => p !== null);
-            
+        pathPoints3D = newPath3D;
         if (pathPoints3D.length >= 2) {
             createPathLine();
         }
@@ -250,9 +290,12 @@ function endGesture() {
     gesture.active = false;
     gesture.points = [];
     updateSwipeVisuals();
-    
-    // Clear path after short delay
-    setTimeout(() => clearPathLine(), 300);
+
+    // Commit charge usage for this path
+    if (gameState === 'PLAYING') {
+        pathCharge = Math.max(0, pathCharge - currentGesturePathLength);
+        currentGesturePathLength = 0;
+    }
 
     // Reset steering input so we don't drift forever
     handleInput(0);
@@ -322,6 +365,7 @@ function startGame() {
         startText.style.display = 'none';
         document.getElementById('score-display').classList.remove('hidden');
         document.getElementById('controls-hint').classList.remove('hidden');
+        pathBar.classList.remove('hidden');
     }, 500);
 
     // Start Music
@@ -365,7 +409,19 @@ function animate() {
     if (gameState === 'PLAYING') {
         // Input Physics
         donut.steeringInput = input.x;
-        
+
+        // Recharge path energy when not drawing
+        if (!gesture.active && pathCharge < maxPathCharge) {
+            pathCharge = Math.min(maxPathCharge, pathCharge + dt * 2); // 0.5s per 1m => 2 m/s
+        }
+
+        // Update path bar UI
+        const chargeRatio = maxPathCharge > 0 ? (pathCharge / maxPathCharge) : 0;
+        if (pathBarFill) {
+            pathBarFill.style.transform = `scaleX(${chargeRatio})`;
+            pathBarFill.style.opacity = chargeRatio > 0.05 ? '1' : '0.2';
+        }
+
         // Pure Physics: We do not touch velocity manually.
         // Gravity and Terrain slope provide all acceleration.
         // This removes any "artificial force" feel.
@@ -418,8 +474,18 @@ function animate() {
             gameState = 'GAME_OVER';
         }
 
+        // Game Over if donut has fallen over
+        if (donut.hasFallen) {
+            gameState = 'GAME_OVER';
+        }
+
         if (pos.y < terrainY - 20) {
             gameState = 'GAME_OVER';
+        }
+
+        // Clear 3D path line once donut has finished following it
+        if (!donut.pathFollowActive && !gesture.active && pathLine) {
+            clearPathLine();
         }
     } else if (gameState === 'IDLE') {
         // Stick physics body to visual start position so it doesn't drift in void
