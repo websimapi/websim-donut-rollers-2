@@ -451,6 +451,7 @@ function animate() {
         document.getElementById('score-val').innerText = mph;
 
         // Update Terrain
+        const zPos = donut.getPosition().z;
         terrain.update(zPos);
         
         // --- Enhanced Bounds Checking ---
