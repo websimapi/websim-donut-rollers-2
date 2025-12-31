@@ -28,6 +28,12 @@ export class InfiniteTerrain {
     getHeightAt(x, z) {
         const freq = 0.015; 
         
+        // 0. Smooth launch lane for the first 100m straight ahead in the center
+        // Pure gentle downhill line: no bumps, no canyon walls, no noise
+        if (z >= 0 && z <= 100 && Math.abs(x) < 5) {
+            return -0.01 * z;
+        }
+
         // 1. Z-Axis Profile: Gentler slope
         let y = -0.01 * z + 3 * Math.sin(z * freq);
 

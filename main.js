@@ -48,8 +48,8 @@ let gameState = 'IDLE'; // IDLE, STARTING, PLAYING, GAME_OVER
 let input = { x: 0 }; // -1 to 1
 let stoppedTime = 0; // how long we've been basically stopped
 
-// Path drawing energy (meters of path available)
-const maxPathCharge = 10;
+ // Path drawing energy (meters of path available)
+const maxPathCharge = 100;
 let pathCharge = maxPathCharge;
 let currentGesturePathLength = 0;
 
