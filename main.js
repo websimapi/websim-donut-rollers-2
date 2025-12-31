@@ -426,8 +426,8 @@ function animate() {
 
         // Recharge path energy when not drawing
         if (!gesture.active && pathCharge < maxPathCharge) {
-            // 10m per second recharge
-            pathCharge = Math.min(maxPathCharge, pathCharge + dt * 10);
+            // 15m per second recharge - slightly faster
+            pathCharge = Math.min(maxPathCharge, pathCharge + dt * 15);
         }
 
         // Update path bar UI
