@@ -182,10 +182,10 @@ const gesture = {
 const swipePath = document.getElementById('swipe-path');
 
 function updateSwipeVisuals() {
-    if (!gesture.active || gesture.points.length < 2) {
+    // If not actively drawing, or not enough points, or no charge left,
+    // just clear the on-screen stroke but keep any existing 3D path line.
+    if (!gesture.active || gesture.points.length < 2 || pathCharge <= 0) {
         swipePath.setAttribute('d', '');
-        // Keep existing 3D path line until it is followed/finished
-        currentGesturePathLength = 0;
         return;
     }
 
@@ -373,6 +373,21 @@ function startGame() {
 
     // Trigger Donut Action
     donut.startRolling();
+
+    // Pre-drawn 100m straight path downhill for a strong start
+    const startPos = donut.getPosition();
+    pathPoints3D = [];
+    const step = 2;
+    const totalLength = 100;
+    for (let s = 0; s <= totalLength; s += step) {
+        const x = startPos.x;
+        const z = startPos.z + s;
+        const y = terrain.getHeightAt(x, z) + 0.3;
+        pathPoints3D.push(new THREE.Vector3(x, y, z));
+    }
+    createPathLine();
+    donut.setPath(pathPoints3D);
+
     gameState = 'PLAYING';
 }
 
