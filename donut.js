@@ -30,6 +30,11 @@ export class Donut {
 
         // Simple roll state for controlled upright spinning
         this.rollAngle = 0;
+
+        // Visual heading & banking (smooth turn animations)
+        this.visualYaw = 0;
+        this.targetYaw = 0;
+        this.currentBank = 0;
         
         // --- Visuals ---
         this.basePosition = position.clone();
@@ -168,6 +173,9 @@ export class Donut {
 
         // Reset roll state
         this.rollAngle = 0;
+        this.visualYaw = 0;
+        this.targetYaw = 0;
+        this.currentBank = 0;
         
         // Reset physics state completely
         this.body.quaternion.set(0, 0, 0, 1);
@@ -302,7 +310,8 @@ export class Donut {
                         const dvx = targetVx - vel.x;
                         const dvz = targetVz - vel.z;
 
-                        const alignStrength = onPath ? 6 : 3; // stronger pull when we're on the line
+                        // Slightly softer steering forces for smoother following
+                        const alignStrength = onPath ? 3.5 : 2.0;
                         const mass = this.body.mass;
 
                         // Apply force in XZ plane to steer toward path direction
@@ -322,18 +331,26 @@ export class Donut {
                         const distPerpSq = perpX * perpX + perpZ * perpZ;
                         if (distPerpSq > 0.0001) {
                             const distPerp = Math.sqrt(distPerpSq);
-                            const maxPull = 12;
-                            const pullStrength = Math.min(maxPull, distPerp * 3);
+                            const maxPull = 10;
+                            const pullStrength = Math.min(maxPull, distPerp * 2.5);
                             const pullX = (perpX / distPerp) * pullStrength * mass;
                             const pullZ = (perpZ / distPerp) * pullStrength * mass;
                             this.body.applyForce(new CANNON.Vec3(pullX, 0, pullZ), this.body.position);
                         }
+
+                        // Smoothly steer visual heading toward path direction
+                        this.targetYaw = Math.atan2(nx, nz);
                     }
                 }
 
                 // Stop following once we've clearly passed the end of the path
                 if (pos.z > this.pathPoints[lastIdx].z + 10) {
                     this.pathFollowActive = false;
+                }
+            } else {
+                // When not following a path, point roughly where we're moving
+                if (speed > 0.5) {
+                    this.targetYaw = Math.atan2(vel.x, vel.z);
                 }
             }
 
@@ -369,7 +386,7 @@ export class Donut {
             if (vel.y > 20) vel.y = 20;
             if (vel.y < -35) vel.y = -35;
 
-            // --- Locked Upright Rolling with Visual Banking ---
+            // --- Locked Upright Rolling with Visual Heading & Banking ---
             const rollRadius = 1.3;
             this.rollAngle = (this.rollAngle + (speed * dt) / rollRadius) % (Math.PI * 2);
 
@@ -396,28 +413,45 @@ export class Donut {
             );
             this.trail.update(trailPos, trailQuat);
 
-            // --- Sync Visuals with extra tilt based on lateral motion ---
+            // --- Sync Visuals with smooth heading and banking ---
             if (!isNaN(this.body.position.x)) {
                 this.meshGroup.position.copy(this.body.position);
 
-                // Base rotation from physics (upright rolling)
-                const baseQuat = new THREE.Quaternion(
-                    this.body.quaternion.x,
-                    this.body.quaternion.y,
-                    this.body.quaternion.z,
-                    this.body.quaternion.w
-                );
+                // Smoothly interpolate visual yaw toward the target yaw
+                const yawLerp = 1 - Math.exp(-8 * dt);
+                // Use THREE's angle lerp to handle wrap-around correctly
+                this.visualYaw = THREE.MathUtils.lerpAngle(this.visualYaw, this.targetYaw || 0, yawLerp);
 
-                // Bank/tilt the donut visually when it slides sideways
-                const lateralSpeed = this.body.velocity.x;
-                const maxBank = 0.6; // radians
-                const bankAngle = THREE.MathUtils.clamp(lateralSpeed * 0.05, -maxBank, maxBank);
+                // Compute turn sharpness for extra lean on tight turns
+                let angleDelta = this.targetYaw - this.visualYaw;
+                angleDelta = Math.atan2(Math.sin(angleDelta), Math.cos(angleDelta)); // wrap to [-PI, PI]
 
-                const bankQuat = new THREE.Quaternion();
+                // Heading-right vector in XZ plane (for lateral speed)
+                const headingRightX = Math.sin(this.visualYaw + Math.PI / 2);
+                const headingRightZ = Math.cos(this.visualYaw + Math.PI / 2);
+                const lateralSpeed = this.body.velocity.x * headingRightX + this.body.velocity.z * headingRightZ;
+
+                const maxBank = 0.7; // radians
+                let desiredBank = lateralSpeed * 0.04 + angleDelta * 0.5; // extra lean for sharp turns
+                desiredBank = THREE.MathUtils.clamp(desiredBank, -maxBank, maxBank);
+
+                // Smooth bank transitions
+                const bankLerp = 1 - Math.exp(-10 * dt);
+                this.currentBank = THREE.MathUtils.lerp(this.currentBank, desiredBank, bankLerp);
+
+                // Base roll from physics (around local X)
+                const rollQuat = new THREE.Quaternion();
+                rollQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.rollAngle);
+
+                // Yaw to face direction of travel / path
+                const yawQuat = new THREE.Quaternion();
+                yawQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.visualYaw);
+
                 // Bank around local Z axis so the donut leans into the turn
-                bankQuat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -bankAngle);
+                const bankQuat = new THREE.Quaternion();
+                bankQuat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -this.currentBank);
 
-                const finalQuat = baseQuat.clone().multiply(bankQuat);
+                const finalQuat = yawQuat.multiply(rollQuat).multiply(bankQuat);
                 this.meshGroup.quaternion.copy(finalQuat);
             }
             

@@ -443,10 +443,12 @@ function animate() {
 
         const vel = donut.body.velocity;
 
-        // Update Score (distance travelled downhill)
-        const zPos = donut.meshGroup.position.z;
-        score = Math.floor(Math.max(0, zPos));
-        document.getElementById('score-val').innerText = score;
+        // Update speed display (convert to MPH)
+        const v = donut.body.velocity;
+        const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z); // units per second
+        const mph = Math.round(speed * 2.23694); // 1 m/s ≈ 2.23694 mph
+        score = mph;
+        document.getElementById('score-val').innerText = mph;
 
         // Update Terrain
         terrain.update(zPos);
