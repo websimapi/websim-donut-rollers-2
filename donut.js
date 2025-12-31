@@ -302,29 +302,8 @@ export class Donut {
                         const nx = dirX / len;
                         const nz = dirZ / len;
 
-                        // Base desired speed at least equal to current, with extra when on path
-                        let desiredSpeed = Math.max(speed, 20);
-                        if (onPath) {
-                            desiredSpeed += 10; // extra push when we ride the line
-                        }
-
-                        // Desired velocity along the path
-                        const targetVx = nx * desiredSpeed;
-                        const targetVz = nz * desiredSpeed;
-
-                        // Smoothly accelerate toward desired velocity instead of snapping
-                        const dvx = targetVx - vel.x;
-                        const dvz = targetVz - vel.z;
-
-                        // Slightly softer steering forces for smoother following
-                        const alignStrength = onPath ? 3.5 : 2.0;
+                        // Gentle attraction back toward the path center line (lateral only)
                         const mass = this.body.mass;
-
-                        // Apply force in XZ plane to steer toward path direction
-                        const forceDir = new CANNON.Vec3(dvx * alignStrength * mass, 0, dvz * alignStrength * mass);
-                        this.body.applyForce(forceDir, this.body.position);
-
-                        // Gentle attraction back toward the path center line
                         const p = this.pathPoints[this.pathIndex];
                         const offsetX = p.x - pos.x;
                         const offsetZ = p.z - pos.z;
@@ -341,6 +320,7 @@ export class Donut {
                             const pullStrength = Math.min(maxPull, distPerp * 2.5);
                             const pullX = (perpX / distPerp) * pullStrength * mass;
                             const pullZ = (perpZ / distPerp) * pullStrength * mass;
+                            // Apply only lateral correction; no forward push so donut can slow/stop naturally
                             this.body.applyForce(new CANNON.Vec3(pullX, 0, pullZ), this.body.position);
                         }
 
@@ -366,16 +346,11 @@ export class Donut {
             this.body.linearDamping = 0.3;
             this.body.torque.set(0, 0, 0);
 
-            // Simple boost: still allow forward boosts if active
+            // Disable continuous forward boost force so donut can coast/crash/stop purely from physics
             if (this.boostActive) {
                 this.boostElapsed += dt;
                 const progress = this.boostElapsed / this.boostDuration;
-                if (progress < 1.0) {
-                    const eased = 1 - Math.pow(1 - progress, 3);
-                    const currentBoost = this.boostMagnitude * (1 - eased);
-                    const force = new CANNON.Vec3(0, 0, 1).scale(currentBoost * this.body.mass);
-                    this.body.applyForce(force, this.body.position);
-                } else {
+                if (progress >= 1.0) {
                     this.boostActive = false;
                 }
             }
