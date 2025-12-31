@@ -39,8 +39,8 @@ scene.add(dirLight);
 // Physics World
 const world = new CANNON.World();
 world.gravity.set(0, -35, 0); // Softer gravity to reduce violent bounces
-world.solver.iterations = 20; // Good balance for performance
-world.defaultContactMaterial.friction = 0.3; // Base friction
+world.solver.iterations = 30; // More iterations for smoother contacts
+world.defaultContactMaterial.friction = 0.4; // Slightly higher friction for smoother sliding
 world.defaultContactMaterial.restitution = 0.0; // No bounce
 
  // --- Game State ---

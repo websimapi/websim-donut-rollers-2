@@ -103,9 +103,9 @@ export class Donut {
 
         this.body.position.copy(position);
         
-        // Damping tuned for stable rolling without jitter
-        this.body.linearDamping = 0.35;
-        this.body.angularDamping = 0.25;
+        // Damping tuned for stable, smooth rolling with less jitter and bounce
+        this.body.linearDamping = 0.45;
+        this.body.angularDamping = 0.35;
         
         // CCD to prevent tunneling at high speeds
         this.body.ccdSpeedThreshold = 1.0;
@@ -338,8 +338,9 @@ export class Donut {
             }
 
             // Basic damping; let physics handle the tilt and motion
-            this.body.angularDamping = 0.1;
-            this.body.linearDamping = 0.01;
+            // Higher damping here smooths motion and reduces jitter
+            this.body.angularDamping = 0.4;
+            this.body.linearDamping = 0.3;
             this.body.torque.set(0, 0, 0);
 
             // Simple boost: still allow forward boosts if active
@@ -356,8 +357,8 @@ export class Donut {
                 }
             }
 
-            // Downforce to keep it planted
-            this.body.applyForce(new CANNON.Vec3(0, -25 * this.body.mass, 0), this.body.position);
+            // Downforce to keep it planted (reduced a bit to avoid jerky bounces)
+            this.body.applyForce(new CANNON.Vec3(0, -15 * this.body.mass, 0), this.body.position);
 
             // --- Velocity Clamping ---
             const maxSpeed = 45;
