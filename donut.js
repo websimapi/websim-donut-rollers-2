@@ -324,8 +324,6 @@ export class Donut {
 
             // --- Velocity Clamping ---
             // Keep overall speed under control to avoid crazy launches from terrain bumps
-            const vel = this.body.velocity;
-            const speed = vel.length();
             const maxSpeed = 18;
             if (speed > maxSpeed) {
                 const scale = maxSpeed / speed;
