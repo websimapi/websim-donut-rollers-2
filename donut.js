@@ -27,6 +27,9 @@ export class Donut {
         this.pathPoints = [];
         this.pathIndex = 0;
         this.pathFollowActive = false;
+
+        // Simple roll state for controlled upright spinning
+        this.rollAngle = 0;
         
         // --- Visuals ---
         this.basePosition = position.clone();
@@ -162,6 +165,9 @@ export class Donut {
         this.trail.reset();
         
         this.meshGroup.rotation.set(0, 0, 0); 
+
+        // Reset roll state
+        this.rollAngle = 0;
         
         // Reset physics state completely
         this.body.quaternion.set(0, 0, 0, 1);
@@ -169,7 +175,7 @@ export class Donut {
         this.meshGroup.position.copy(this.basePosition);
         
         this.world.addBody(this.body);
-        // Initial "Peel out" spin - faster start
+        // Initial straight launch downhill
         this.body.velocity.set(0, 0, 15);
         this.body.angularVelocity.set(10, 0, 0); 
 
@@ -240,179 +246,60 @@ export class Donut {
             this.legR.rotation.z = Math.cos(time * 4) * 0.2;
         } else {
             const vel = this.body.velocity;
-            const speed = vel.length();
-            
-            // --- Path-following: steer velocity along drawn path ---
-            if (this.pathFollowActive && this.pathPoints.length >= 2) {
-                const currentPos = this.body.position;
-                let target = this.pathPoints[this.pathIndex];
 
-                // Advance along path when close to current target
-                const dx = target.x - currentPos.x;
-                const dz = target.z - currentPos.z;
-                const distXZ = Math.hypot(dx, dz);
+            // Force motion to stay roughly straight downhill along +Z
+            // No sideways drift; never roll backwards up the hill.
+            vel.x = 0;
+            if (vel.z < 0) vel.z = -vel.z;
 
-                if (distXZ < 1.0 && this.pathIndex < this.pathPoints.length - 1) {
-                    this.pathIndex++;
-                    target = this.pathPoints[this.pathIndex];
-                }
+            const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
 
-                // Compute direction in XZ plane
-                const dir = new CANNON.Vec3(
-                    target.x - currentPos.x,
-                    0,
-                    target.z - currentPos.z
-                );
-                const dirLen = Math.hypot(dir.x, dir.z);
+            // No steering torque or tilt logic – keep donut upright and simple
+            this.body.angularDamping = 0.1;
+            this.body.linearDamping = 0.01;
+            this.body.torque.set(0, 0, 0);
 
-                if (dirLen > 0.001) {
-                    dir.scale(1 / dirLen, dir);
-
-                    // Align horizontal velocity with path direction
-                    const horizSpeed = Math.hypot(vel.x, vel.z);
-                    
-                    // Boost Speed: actively accelerate when on a path
-                    // Ensure we are always faster than base rolling, and accelerating
-                    let desiredSpeed = horizSpeed + 0.8; 
-                    if (desiredSpeed < 25) desiredSpeed = 25; // Minimum "Zoom" speed on lines
-                    if (desiredSpeed > 50) desiredSpeed = 50; // Hard cap to prevent game breaking
-
-                    vel.x = dir.x * desiredSpeed;
-                    vel.z = dir.z * desiredSpeed;
-
-                    // Spin consistent with linear speed (approximate rolling radius)
-                    const rollRadius = 1.3;
-                    const omegaMag = desiredSpeed / rollRadius;
-                    const axleDir = new CANNON.Vec3(1, 0, 0);
-                    this.body.quaternion.vmult(new CANNON.Vec3(1,0,0), axleDir);
-                    axleDir.normalize();
-                    this.body.angularVelocity.set(
-                        axleDir.x * omegaMag,
-                        axleDir.y * omegaMag,
-                        axleDir.z * omegaMag
-                    );
-                }
-
-                // Stop following when we reach final point
-                const finalTarget = this.pathPoints[this.pathPoints.length - 1];
-                const fx = finalTarget.x - currentPos.x;
-                const fz = finalTarget.z - currentPos.z;
-                if (Math.hypot(fx, fz) < 1.0 && this.pathIndex >= this.pathPoints.length - 1) {
-                    this.pathFollowActive = false;
-                    console.log('[Donut] Path follow complete');
+            // Simple boost: still allow forward boosts if active
+            if (this.boostActive) {
+                this.boostElapsed += dt;
+                const progress = this.boostElapsed / this.boostDuration;
+                if (progress < 1.0) {
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    const currentBoost = this.boostMagnitude * (1 - eased);
+                    const force = new CANNON.Vec3(0, 0, 1).scale(currentBoost * this.body.mass);
+                    this.body.applyForce(force, this.body.position);
+                } else {
+                    this.boostActive = false;
                 }
             }
-            
-            // --- Determine Axle and Up ---
-            const axle = new CANNON.Vec3(1, 0, 0);
-            this.body.quaternion.vmult(axle, axle);
-            const up = new CANNON.Vec3(0, 1, 0);
 
-            // --- Check Stability (Flattening Logic) ---
-            // Dot product of Axle and Up. 0 = Horizontal (Good), 1 or -1 = Vertical (Fallen)
-            const tilt = axle.dot(up);
-            
-            // Penny Flatten Logic:
-            // If tilt > 0.7 (approx 45 degrees) AND we aren't boosting, we start to lose it.
-            // If speed is low, it's easier to fall.
-            if (!this.boostActive && Math.abs(tilt) > 0.8) {
-                this.isFlattening = true;
-            }
-
-            // If flattening, we stop the "ball" behavior and let friction kill it
-            if (this.isFlattening) {
-                // Apply heavy angular damping to stop rolling
-                this.body.angularDamping = 0.9;
-                this.body.linearDamping = 0.5;
-                
-                // No stabilization torque -> let it fall
-                // It will naturally hit the inner cylinder collider
-                
-                // If basically stopped, mark as fallen
-                if (speed < 0.5) {
-                    this.body.angularVelocity.set(0,0,0);
-                    this.body.velocity.set(0,0,0);
-                    this.hasFallen = true;
-                }
-            } else {
-                // --- NORMAL ROLLING PHYSICS ---
-                this.body.angularDamping = 0.1;
-                this.body.linearDamping = 0.01;
-
-                // 1. STABILIZATION TORQUE (Keep Axle Horizontal)
-                // Use the sphere like a wheel. 
-                // We apply torque to rotate the sphere towards upright.
-                
-                const correctionAxis = new CANNON.Vec3();
-                axle.cross(up, correctionAxis); // Vector pointing forward/backward
-                correctionAxis.normalize();
-                
-                // Strength of correction depends on speed. 
-                // Gyroscopic effect: Faster = More stable.
-                const stabilityForce = 200 + (speed * 20);
-                
-                // Apply torque proportional to tilt (Inverted sign to oppose tilt)
-                // We want to push the axle back to the horizontal plane
-                const correctionTorque = correctionAxis.scale(-tilt * stabilityForce);
-                this.body.torque.vadd(correctionTorque, this.body.torque);
-
-                // 2. WOBBLE DAMPING
-                // Remove angular velocity that isn't along the axle (rolling) or global Y (turning)
-                const omega = this.body.angularVelocity;
-                const omegaAxle = axle.clone().scale(omega.dot(axle)); // Rolling spin
-                const omegaWobble = omega.vsub(omegaAxle); // Everything else
-                
-                // Dampen the wobble strongly to prevent "death wobble"
-                this.body.torque.vsub(omegaWobble.scale(80), this.body.torque);
-                
-                // 3. STEERING TORQUE
-                // Rotate around Global Y (Yaw)
-                if (Math.abs(this.steeringInput) > 0.01) {
-                    const steerStrength = 15;
-                    // Tilt the donut into the turn slightly?
-                    // For now just yaw torque
-                    this.body.torque.y -= this.steeringInput * steerStrength;
-                }
-                
-                // 4. BOOST & MOVEMENT
-                if (this.boostActive) {
-                    this.boostElapsed += dt;
-                    const progress = this.boostElapsed / this.boostDuration;
-                    if (progress < 1.0) {
-                        const eased = 1 - Math.pow(1 - progress, 3);
-                        const currentBoost = this.boostMagnitude * (1 - eased);
-                        const force = this.boostDirection.clone().scale(currentBoost * this.body.mass);
-                        this.body.applyForce(force, this.body.position);
-                    } else {
-                        this.boostActive = false;
-                    }
-                }
-                
-                // 5. Downforce (Grip)
-                // Keeps the donut grounded on slopes
-                this.body.applyForce(new CANNON.Vec3(0, -25 * this.body.mass, 0), this.body.position);
-            }
+            // Downforce to keep it planted
+            this.body.applyForce(new CANNON.Vec3(0, -25 * this.body.mass, 0), this.body.position);
 
             // --- Velocity Clamping ---
-            // Keep overall speed under control to avoid crazy launches from terrain bumps
-            const maxSpeed = 45; // Increased significantly to allow fast gameplay
+            const maxSpeed = 45;
             if (speed > maxSpeed) {
                 const scale = maxSpeed / speed;
                 vel.scale(scale, vel);
             }
-            // Clamp vertical velocity so we don't rocket up/down from collisions
             if (vel.y > 20) vel.y = 20;
             if (vel.y < -35) vel.y = -35;
 
-            // Clamp Angular Velocity to prevent visual strobing and unrealistically fast spin
-            const maxAngVel = 12; 
-            if (this.body.angularVelocity.length() > maxAngVel) {
-                const scale = maxAngVel / this.body.angularVelocity.length();
-                this.body.angularVelocity.scale(scale, this.body.angularVelocity);
-            }
+            // --- Locked Upright Rolling ---
+            const rollRadius = 1.3;
+            this.rollAngle = (this.rollAngle + (speed * dt) / rollRadius) % (Math.PI * 2);
 
-            // --- Trail Update ---
-            this.trail.update(this.meshGroup.position, this.meshGroup.quaternion);
+            // Build upright quaternion that only spins around the X axle
+            const q = new CANNON.Quaternion();
+            q.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), this.rollAngle);
+            this.body.quaternion.copy(q);
+
+            // Angular velocity strictly around the axle, matching linear speed
+            const omega = speed / rollRadius;
+            this.body.angularVelocity.set(omega, 0, 0);
+
+            // --- Trail Update using physics transform ---
+            this.trail.update(this.body.position, this.body.quaternion);
 
             // --- Sync Visuals ---
             if (!isNaN(this.body.position.x)) {
