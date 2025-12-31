@@ -158,64 +158,44 @@ export class Donut {
         this.assets.playLoop('roll');
     }
 
-    // New boost system - no cooldown, follows swipe path
-    boostWithDirection(vx, vy) {
+    // New boost system - follows 3D world direction
+    boost(directionVector, intensity) {
         if (!this.isRolling || this.isFlattening) return;
         
-        console.log(`[Donut] Boost Input: vx=${vx.toFixed(3)}, vy=${vy.toFixed(3)}`);
-
-        // Map screen space to world
-        // Camera looks +Z. Screen Right (+vx) corresponds to World Left (-x) in this view.
-        // Screen Up (-vy) corresponds to World Forward (+z).
-        const inputDir = new CANNON.Vec3(-vx, 0, -vy);
-        const strength = inputDir.length();
-        
-        if (strength < 0.1) {
-             console.log(`[Donut] Boost ignored: too weak (${strength.toFixed(3)})`);
-             return;
-        }
-        
+        // Ensure direction is normalized
+        const inputDir = new CANNON.Vec3(directionVector.x, 0, directionVector.z);
         inputDir.normalize();
-        console.log(`[Donut] Boost World Dir: ${inputDir.x.toFixed(2)}, ${inputDir.y.toFixed(2)}, ${inputDir.z.toFixed(2)}`);
+        
+        console.log(`[Donut] Boost World Dir: ${inputDir.x.toFixed(2)}, ${inputDir.y.toFixed(2)}, ${inputDir.z.toFixed(2)} | Intensity: ${intensity.toFixed(2)}`);
 
-        // Calculate boost based on swipe length
+        // Calculate boost params
         const maxBoostDuration = 0.5; 
         const minBoostDuration = 0.1; 
-        this.boostDuration = minBoostDuration + (strength * (maxBoostDuration - minBoostDuration));
+        this.boostDuration = minBoostDuration + (intensity * (maxBoostDuration - minBoostDuration));
         
-        // Reduced boost power to prevent "way way too fast" speeds
-        // Much lower boost power so swipes don't send us "way way too fast"
+        // Reduced boost power to keep speed manageable
         const baseBoost = 3; 
-        const maxBoost = 8; 
-        this.boostMagnitude = baseBoost + (strength * (maxBoost - baseBoost));
+        const maxBoost = 7; 
+        this.boostMagnitude = baseBoost + (intensity * (maxBoost - baseBoost));
         
         this.boostDirection.copy(inputDir);
         this.boostActive = true;
         this.boostElapsed = 0;
         
         // --- Strong Orientation Correction on Boost ---
-        // Auto-align the physics velocity to the swipe direction
+        // Auto-align the physics velocity to the swipe direction to ensure we follow the path
         const speed = this.body.velocity.length();
         if (speed > 1) {
             // Redirect current momentum partially to new direction
             const newVel = inputDir.clone().scale(speed);
-            // Blend: 60% new direction, 40% old (Smooth turn but responsive)
-            this.body.velocity.lerp(newVel, 0.6, this.body.velocity);
+            // Blend: 70% new direction to make it feel responsive to the path
+            this.body.velocity.lerp(newVel, 0.7, this.body.velocity);
         }
         
         // Reset instability
         this.isUnstable = false;
         this.isFlattening = false;
         this.flattenFactor = 0;
-        
-        // Re-align the donut visually/physically to face the new direction immediately
-        // Compute new rotation quaternion where local X (axle) is perpendicular to movement
-        const moveDir = new THREE.Vector3(inputDir.x, 0, inputDir.z);
-        const up = new THREE.Vector3(0, 1, 0);
-        const newAxle = new THREE.Vector3().crossVectors(up, moveDir).normalize();
-        
-        // We can't snap physics instantly without glitches, but we can apply a strong torque impulse
-        // to help the stabilizer in the update loop
         
         this.assets.playSound('jump');
     }
@@ -318,13 +298,14 @@ export class Donut {
                 }
                 
                 // 5. Downforce (Grip)
-                // Keeps the sphere grounded on slopes - softened to avoid "slamming" into bumps
-                this.body.applyForce(new CANNON.Vec3(0, -40 * this.body.mass, 0), this.body.position);
+                // Keeps the sphere grounded on slopes
+                // Reduced from 40 to 20 to prevent erratic jitter on uneven terrain
+                this.body.applyForce(new CANNON.Vec3(0, -20 * this.body.mass, 0), this.body.position);
             }
 
             // --- Velocity Clamping ---
             // Keep overall speed under control to avoid crazy launches from terrain bumps
-            const maxSpeed = 18;
+            const maxSpeed = 15; // Slightly reduced max speed for better control
             if (speed > maxSpeed) {
                 const scale = maxSpeed / speed;
                 vel.scale(scale, vel);

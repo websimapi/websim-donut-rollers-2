@@ -210,18 +210,35 @@ function endGesture() {
     if (gameState === 'PLAYING') {
         console.log(`[Gesture] End. dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}, dist=${dist.toFixed(1)}, dt=${dt.toFixed(0)}ms`);
         
+        // Calculate Camera-Relative Directions
+        const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        camForward.y = 0; 
+        camForward.normalize();
+        
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        camRight.y = 0; 
+        camRight.normalize();
+
         if (dist > 30) {
             // Swipe/Drag Boost
             const maxDist = 300;
-            // Normalize and clamp vector
-            const vx = Math.min(Math.max(dx / maxDist, -1), 1);
-            const vy = Math.min(Math.max(dy / maxDist, -1), 1);
-            console.log(`[Gesture] Swipe Action. Input vx=${vx.toFixed(3)}, vy=${vy.toFixed(3)}`);
-            donut.boostWithDirection(vx, vy);
+            const inputX = dx / maxDist; // Screen Right (+dx) -> Cam Right
+            const inputY = dy / maxDist; // Screen Down (+dy) -> Cam Backwards (-Forward)
+
+            const boostDir = new THREE.Vector3()
+                .addScaledVector(camRight, inputX)
+                .addScaledVector(camForward, -inputY); // Invert Y for Forward
+            
+            const intensity = Math.min(boostDir.length(), 1.0);
+            if (intensity > 0.001) boostDir.normalize();
+
+            console.log(`[Gesture] Swipe Action. InputX=${inputX.toFixed(2)}, InputY=${inputY.toFixed(2)}`);
+            donut.boost(boostDir, intensity);
+
         } else if (dt < 300) {
-            // Simple Tap - Small forward hop
+            // Simple Tap - Small forward hop relative to camera
             console.log(`[Gesture] Tap Action.`);
-            donut.boostWithDirection(0, -0.4); 
+            donut.boost(camForward, 0.4); 
         }
     }
 
