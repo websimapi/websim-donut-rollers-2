@@ -163,7 +163,8 @@ export class Donut {
         
         this.meshGroup.rotation.set(0, 0, 0); 
         
-        // Reset to base position to ensure clean start without bounce offsets
+        // Reset physics state completely
+        this.body.quaternion.set(0, 0, 0, 1);
         this.body.position.copy(this.basePosition);
         this.meshGroup.position.copy(this.basePosition);
         
@@ -348,10 +349,11 @@ export class Donut {
                 
                 // Strength of correction depends on speed. 
                 // Gyroscopic effect: Faster = More stable.
-                const stabilityForce = 150 + (speed * 10);
+                const stabilityForce = 200 + (speed * 20);
                 
-                // Apply torque proportional to tilt
-                const correctionTorque = correctionAxis.scale(tilt * stabilityForce);
+                // Apply torque proportional to tilt (Inverted sign to oppose tilt)
+                // We want to push the axle back to the horizontal plane
+                const correctionTorque = correctionAxis.scale(-tilt * stabilityForce);
                 this.body.torque.vadd(correctionTorque, this.body.torque);
 
                 // 2. WOBBLE DAMPING
@@ -360,8 +362,8 @@ export class Donut {
                 const omegaAxle = axle.clone().scale(omega.dot(axle)); // Rolling spin
                 const omegaWobble = omega.vsub(omegaAxle); // Everything else
                 
-                // Dampen the wobble strongly
-                this.body.torque.vsub(omegaWobble.scale(50), this.body.torque);
+                // Dampen the wobble strongly to prevent "death wobble"
+                this.body.torque.vsub(omegaWobble.scale(80), this.body.torque);
                 
                 // 3. STEERING TORQUE
                 // Rotate around Global Y (Yaw)
