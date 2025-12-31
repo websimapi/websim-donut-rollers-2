@@ -29,6 +29,7 @@ export class Donut {
         this.pathFollowActive = false;
         
         // --- Visuals ---
+        this.basePosition = position.clone();
         this.meshGroup = new THREE.Group();
         this.meshGroup.position.copy(position);
         
@@ -162,16 +163,14 @@ export class Donut {
         
         this.meshGroup.rotation.set(0, 0, 0); 
         
-        if (!isNaN(this.meshGroup.position.y)) {
-            this.body.position.copy(this.meshGroup.position);
-        } else {
-            this.body.position.set(0, 10, 0);
-        }
+        // Reset to base position to ensure clean start without bounce offsets
+        this.body.position.copy(this.basePosition);
+        this.meshGroup.position.copy(this.basePosition);
         
         this.world.addBody(this.body);
-        // Initial "Peel out" spin
-        this.body.velocity.set(0, 0, 5);
-        this.body.angularVelocity.set(8, 0, 0); 
+        // Initial "Peel out" spin - faster start
+        this.body.velocity.set(0, 0, 15);
+        this.body.angularVelocity.set(10, 0, 0); 
 
         this.assets.playSound('jump');
         this.assets.playLoop('roll');
@@ -270,7 +269,12 @@ export class Donut {
 
                     // Align horizontal velocity with path direction
                     const horizSpeed = Math.hypot(vel.x, vel.z);
-                    const desiredSpeed = Math.max(5, Math.min(horizSpeed + 5 * distXZ, 12)); // speed up a bit along path
+                    
+                    // Boost Speed: actively accelerate when on a path
+                    // Ensure we are always faster than base rolling, and accelerating
+                    let desiredSpeed = horizSpeed + 0.8; 
+                    if (desiredSpeed < 25) desiredSpeed = 25; // Minimum "Zoom" speed on lines
+                    if (desiredSpeed > 50) desiredSpeed = 50; // Hard cap to prevent game breaking
 
                     vel.x = dir.x * desiredSpeed;
                     vel.z = dir.z * desiredSpeed;
@@ -389,13 +393,13 @@ export class Donut {
 
             // --- Velocity Clamping ---
             // Keep overall speed under control to avoid crazy launches from terrain bumps
-            const maxSpeed = 12; // Reduced max speed for better control
+            const maxSpeed = 45; // Increased significantly to allow fast gameplay
             if (speed > maxSpeed) {
                 const scale = maxSpeed / speed;
                 vel.scale(scale, vel);
             }
             // Clamp vertical velocity so we don't rocket up/down from collisions
-            if (vel.y > 12) vel.y = 12;
+            if (vel.y > 20) vel.y = 20;
             if (vel.y < -35) vel.y = -35;
 
             // Clamp Angular Velocity to prevent visual strobing and unrealistically fast spin
@@ -425,10 +429,9 @@ export class Donut {
     }
 
     resetPhysicsPosition() {
-        if (!isNaN(this.meshGroup.position.y)) {
-            this.body.position.copy(this.meshGroup.position);
-            this.body.velocity.set(0,0,0);
-            this.body.angularVelocity.set(0,0,0);
-        }
+        // Reset to the initial spawn anchor, ignoring any visual bounding/offsets
+        this.body.position.copy(this.basePosition);
+        this.body.velocity.set(0,0,0);
+        this.body.angularVelocity.set(0,0,0);
     }
 }

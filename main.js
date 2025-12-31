@@ -98,9 +98,8 @@ loadAudio('./music_loop.mp3', 'music');
 const terrain = new InfiniteTerrain(scene, world);
 
 // Calculate start height based on terrain at 0,0
-// Start much higher to prevent initial clipping
-// Ensure initial height is safe and definitely above terrain
-const startY = terrain.getHeightAt(0, 0) + 5; 
+// Start closer to ground for a smooth roll-out (Donut radius approx 1.3)
+const startY = terrain.getHeightAt(0, 0) + 1.5; 
 const donut = new Donut(scene, world, new THREE.Vector3(0, startY, 0), assets);
 
  // --- 3D Path Visualization ---
