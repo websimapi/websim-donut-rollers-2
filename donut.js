@@ -186,10 +186,10 @@ export class Donut {
         // Auto-align the physics velocity to the swipe direction to ensure we follow the path
         const speed = this.body.velocity.length();
         if (speed > 1) {
-            // Redirect current momentum partially to new direction
+            // Redirect current momentum completely to new direction to strictly follow path
+            // This prevents "drifting" from old momentum
             const newVel = inputDir.clone().scale(speed);
-            // Blend: 70% new direction to make it feel responsive to the path
-            this.body.velocity.lerp(newVel, 0.7, this.body.velocity);
+            this.body.velocity.copy(newVel);
         }
         
         // Reset instability
@@ -305,7 +305,7 @@ export class Donut {
 
             // --- Velocity Clamping ---
             // Keep overall speed under control to avoid crazy launches from terrain bumps
-            const maxSpeed = 15; // Slightly reduced max speed for better control
+            const maxSpeed = 12; // Reduced max speed for better control
             if (speed > maxSpeed) {
                 const scale = maxSpeed / speed;
                 vel.scale(scale, vel);

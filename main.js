@@ -248,6 +248,9 @@ function endGesture() {
     
     // Clear path after short delay
     setTimeout(() => clearPathLine(), 300);
+
+    // Reset steering input so we don't drift forever
+    handleInput(0);
 }
 
 // Mouse Events

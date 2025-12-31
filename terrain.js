@@ -8,7 +8,7 @@ export class InfiniteTerrain {
         this.world = world;
         this.chunks = [];
         this.chunkLength = 200; // Longer chunks
-        this.chunkWidth = 300;  // Much wider terrain for mountain sides
+        this.chunkWidth = 1000;  // Much wider terrain for mountain sides
         
         // Physics material
         this.mat = new CANNON.Material();
@@ -28,15 +28,22 @@ export class InfiniteTerrain {
     getHeightAt(x, z) {
         const freq = 0.015; 
         
-        // 1. Z-Axis Profile: further reduced slope to slow natural acceleration
-        let y = -0.02 * z + 6 * Math.sin(z * freq);
+        // 1. Z-Axis Profile: Gentler slope
+        let y = -0.01 * z + 3 * Math.sin(z * freq);
 
         // 2. X-Axis Profile: "Canyon" shape
-        // Flat center for rolling (x: -30 to 30), then steep walls
-        y += Math.pow(Math.abs(x) / 20, 6) * 0.2;
+        // Wide flat center for rolling, then steep walls
+        const wallStart = 30;
+        if (Math.abs(x) > wallStart) {
+            const dist = Math.abs(x) - wallStart;
+            y += Math.pow(dist / 15, 3) * 2.0; 
+        }
 
-        // 3. Visual Roughness - toned down to reduce random bumps that launch the donut
-        y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 2;
+        // 3. Visual Roughness
+        // Dampen noise near center (x=0) to prevent drift
+        // 0.0 at x=0, ramps to 1.0 at x=20
+        const centerDamp = Math.min(1.0, Math.max(0, (Math.abs(x) - 10) / 10)); 
+        y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 2 * centerDamp;
 
         return y;
     }
