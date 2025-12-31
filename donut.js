@@ -152,7 +152,7 @@ export class Donut {
         this.world.addBody(this.body);
         // Initial "Peel out" spin
         this.body.velocity.set(0, 0, 5);
-        this.body.angularVelocity.set(15, 0, 0); // High RPM start
+        this.body.angularVelocity.set(8, 0, 0); 
 
         this.assets.playSound('jump');
         this.assets.playLoop('roll');
@@ -313,6 +313,13 @@ export class Donut {
             // Clamp vertical velocity so we don't rocket up/down from collisions
             if (vel.y > 12) vel.y = 12;
             if (vel.y < -35) vel.y = -35;
+
+            // Clamp Angular Velocity to prevent visual strobing and unrealistically fast spin
+            const maxAngVel = 12; 
+            if (this.body.angularVelocity.length() > maxAngVel) {
+                const scale = maxAngVel / this.body.angularVelocity.length();
+                this.body.angularVelocity.scale(scale, this.body.angularVelocity);
+            }
 
             // --- Trail Update ---
             this.trail.update(this.meshGroup.position, this.meshGroup.quaternion);

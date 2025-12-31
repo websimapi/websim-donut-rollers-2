@@ -209,30 +209,45 @@ function endGesture() {
     
     if (gameState === 'PLAYING') {
         console.log(`[Gesture] End. dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}, dist=${dist.toFixed(1)}, dt=${dt.toFixed(0)}ms`);
-        
-        // Calculate Camera-Relative Directions
-        const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        camForward.y = 0; 
-        camForward.normalize();
-        
-        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-        camRight.y = 0; 
-        camRight.normalize();
 
-        if (dist > 30) {
-            // Swipe/Drag Boost
+        // Use 3D projected path for accurate direction relative to terrain/camera
+        if (pathPoints3D.length >= 2) {
+            const start3D = pathPoints3D[0];
+            const end3D = pathPoints3D[pathPoints3D.length - 1];
+            
+            const boostDir = new THREE.Vector3().subVectors(end3D, start3D);
+            boostDir.y = 0; // Flatten trajectory to horizontal plane
+            
+            // Map distance to intensity (e.g. 40 world units = max power)
+            const worldDist = boostDir.length();
+            const intensity = Math.min(worldDist / 40, 1.0); 
+            
+            if (intensity > 0.05) {
+                boostDir.normalize();
+                console.log(`[Gesture] Swipe Action 3D. Dist=${worldDist.toFixed(1)} Intensity=${intensity.toFixed(2)}`);
+                donut.boost(boostDir, intensity);
+            }
+        } else if (dist > 30) {
+            // Fallback to screen space if 3D projection failed
+            const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            camForward.y = 0; 
+            camForward.normalize();
+            
+            const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+            camRight.y = 0; 
+            camRight.normalize();
+
             const maxDist = 300;
-            const inputX = dx / maxDist; // Screen Right (+dx) -> Cam Right
-            const inputY = dy / maxDist; // Screen Down (+dy) -> Cam Backwards (-Forward)
+            const inputX = dx / maxDist; 
+            const inputY = dy / maxDist; 
 
             const boostDir = new THREE.Vector3()
                 .addScaledVector(camRight, inputX)
-                .addScaledVector(camForward, -inputY); // Invert Y for Forward
+                .addScaledVector(camForward, -inputY);
             
             const intensity = Math.min(boostDir.length(), 1.0);
             if (intensity > 0.001) boostDir.normalize();
 
-            console.log(`[Gesture] Swipe Action. InputX=${inputX.toFixed(2)}, InputY=${inputY.toFixed(2)}`);
             donut.boost(boostDir, intensity);
 
         } else if (dt < 300) {
@@ -265,9 +280,6 @@ window.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
-    if (gameState === 'PLAYING') {
-        handleInput((e.clientX / window.innerWidth) * 2 - 1);
-    }
     if (gesture.active) {
         gesture.points.push({x: e.clientX, y: e.clientY});
         updateSwipeVisuals();
@@ -293,7 +305,6 @@ window.addEventListener('touchmove', (e) => {
         e.preventDefault();
     }
     const t = e.touches[0];
-    handleInput((t.clientX / window.innerWidth) * 2 - 1);
     
     if (gesture.active) {
         gesture.points.push({x: t.clientX, y: t.clientY});
