@@ -184,8 +184,9 @@ export class Donut {
         this.boostDuration = minBoostDuration + (strength * (maxBoostDuration - minBoostDuration));
         
         // Reduced boost power to prevent "way way too fast" speeds
-        const baseBoost = 5; 
-        const maxBoost = 15; 
+        // Much lower boost power so swipes don't send us "way way too fast"
+        const baseBoost = 3; 
+        const maxBoost = 8; 
         this.boostMagnitude = baseBoost + (strength * (maxBoost - baseBoost));
         
         this.boostDirection.copy(inputDir);
@@ -317,9 +318,22 @@ export class Donut {
                 }
                 
                 // 5. Downforce (Grip)
-                // Keeps the sphere grounded on slopes - Increased for better grip
-                this.body.applyForce(new CANNON.Vec3(0, -80 * this.body.mass, 0), this.body.position);
+                // Keeps the sphere grounded on slopes - softened to avoid "slamming" into bumps
+                this.body.applyForce(new CANNON.Vec3(0, -40 * this.body.mass, 0), this.body.position);
             }
+
+            // --- Velocity Clamping ---
+            // Keep overall speed under control to avoid crazy launches from terrain bumps
+            const vel = this.body.velocity;
+            const speed = vel.length();
+            const maxSpeed = 18;
+            if (speed > maxSpeed) {
+                const scale = maxSpeed / speed;
+                vel.scale(scale, vel);
+            }
+            // Clamp vertical velocity so we don't rocket up/down from collisions
+            if (vel.y > 12) vel.y = 12;
+            if (vel.y < -35) vel.y = -35;
 
             // --- Trail Update ---
             this.trail.update(this.meshGroup.position, this.meshGroup.quaternion);

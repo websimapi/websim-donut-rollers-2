@@ -28,17 +28,15 @@ export class InfiniteTerrain {
     getHeightAt(x, z) {
         const freq = 0.015; 
         
-        // 1. Z-Axis Profile: Significantly reduced slope
-        // Much slower base speed
-        let y = -0.04 * z + 8 * Math.sin(z * freq);
+        // 1. Z-Axis Profile: further reduced slope to slow natural acceleration
+        let y = -0.02 * z + 6 * Math.sin(z * freq);
 
         // 2. X-Axis Profile: "Canyon" shape
-        // Flat center for rolling (x: -30 to 30), then extremely steep walls
-        // Power of 6 creates a flat floor that curves up sharply into walls
+        // Flat center for rolling (x: -30 to 30), then steep walls
         y += Math.pow(Math.abs(x) / 20, 6) * 0.2;
 
-        // 3. Visual Roughness
-        y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 4;
+        // 3. Visual Roughness - toned down to reduce random bumps that launch the donut
+        y += Math.cos(z * 0.03) * Math.sin(x * 0.05) * 2;
 
         return y;
     }
