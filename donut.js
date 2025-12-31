@@ -254,6 +254,67 @@ export class Donut {
 
             const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
 
+            // --- Path Following / Speed Boost on Path ---
+            if (this.pathFollowActive && this.pathPoints.length >= 2) {
+                const pos = this.body.position;
+                const lastIdx = this.pathPoints.length - 1;
+
+                // Advance index roughly with forward progress
+                while (this.pathIndex < lastIdx - 1 && pos.z > this.pathPoints[this.pathIndex + 1].z) {
+                    this.pathIndex++;
+                }
+
+                // Find closest point ahead within a small window
+                let closestIdx = this.pathIndex;
+                let closestDistSq = Infinity;
+                for (let i = this.pathIndex; i <= Math.min(lastIdx, this.pathIndex + 20); i++) {
+                    const p = this.pathPoints[i];
+                    const dx = pos.x - p.x;
+                    const dz = pos.z - p.z;
+                    const d2 = dx * dx + dz * dz;
+                    if (d2 < closestDistSq) {
+                        closestDistSq = d2;
+                        closestIdx = i;
+                    }
+                }
+                this.pathIndex = closestIdx;
+
+                const onPath = closestDistSq < (5 * 5); // within 5m of path center
+
+                if (this.pathIndex < lastIdx) {
+                    const curr = this.pathPoints[this.pathIndex];
+                    const next = this.pathPoints[this.pathIndex + 1];
+
+                    // Tangent direction along the path, flattened to XZ
+                    const dirX = next.x - curr.x;
+                    const dirZ = next.z - curr.z;
+                    const len = Math.hypot(dirX, dirZ);
+
+                    if (len > 0.0001) {
+                        const nx = dirX / len;
+                        const nz = dirZ / len;
+
+                        // Base desired speed at least equal to current, with extra when on path
+                        let desiredSpeed = Math.max(speed, 20);
+                        if (onPath) {
+                            desiredSpeed += 10; // extra push when we ride the line
+                        }
+
+                        // Blend velocity toward path direction
+                        const targetVx = nx * desiredSpeed;
+                        const targetVz = nz * desiredSpeed;
+
+                        vel.x = targetVx;
+                        vel.z = targetVz;
+                    }
+                }
+
+                // Stop following once we've clearly passed the end of the path
+                if (pos.z > this.pathPoints[lastIdx].z + 10) {
+                    this.pathFollowActive = false;
+                }
+            }
+
             // No steering torque or tilt logic – keep donut upright and simple
             this.body.angularDamping = 0.1;
             this.body.linearDamping = 0.01;
