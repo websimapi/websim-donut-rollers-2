@@ -298,8 +298,19 @@ export class Donut {
             const omega = speed / rollRadius;
             this.body.angularVelocity.set(omega, 0, 0);
 
-            // --- Trail Update using physics transform ---
-            this.trail.update(this.body.position, this.body.quaternion);
+            // --- Trail Update using physics transform (convert CANNON to THREE) ---
+            const trailPos = new THREE.Vector3(
+                this.body.position.x,
+                this.body.position.y,
+                this.body.position.z
+            );
+            const trailQuat = new THREE.Quaternion(
+                this.body.quaternion.x,
+                this.body.quaternion.y,
+                this.body.quaternion.z,
+                this.body.quaternion.w
+            );
+            this.trail.update(trailPos, trailQuat);
 
             // --- Sync Visuals ---
             if (!isNaN(this.body.position.x)) {
