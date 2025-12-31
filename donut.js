@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { Trail } from './trail.js';
 
+// Local helper for smooth angle interpolation (handles wrap-around at ±π)
+function lerpAngle(a, b, t) {
+    const diff = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    return a + diff * t;
+}
+
 export class Donut {
     constructor(scene, world, position, assets) {
         this.scene = scene;
@@ -419,8 +425,8 @@ export class Donut {
 
                 // Smoothly interpolate visual yaw toward the target yaw
                 const yawLerp = 1 - Math.exp(-8 * dt);
-                // Use THREE's angle lerp to handle wrap-around correctly
-                this.visualYaw = THREE.MathUtils.lerpAngle(this.visualYaw, this.targetYaw || 0, yawLerp);
+                // Use local angle lerp to handle wrap-around correctly
+                this.visualYaw = lerpAngle(this.visualYaw, this.targetYaw || 0, yawLerp);
 
                 // Compute turn sharpness for extra lean on tight turns
                 let angleDelta = this.targetYaw - this.visualYaw;
