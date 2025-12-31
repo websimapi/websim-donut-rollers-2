@@ -21,6 +21,11 @@ export class Donut {
         this.boostMagnitude = 0;
         this.boostDuration = 0;
         this.boostElapsed = 0;
+
+        // Path-following state (world-space points in CANNON.Vec3)
+        this.pathPoints = [];
+        this.pathIndex = 0;
+        this.pathFollowActive = false;
         
         // --- Visuals ---
         this.meshGroup = new THREE.Group();
@@ -56,34 +61,46 @@ export class Donut {
         this.trail = new Trail(scene, 0xffffff);
 
         // --- Physics ---
-        // Use a composite body:
-        // 1. A Sphere for the main ground contact (Smoothest rolling behavior, no edge catching)
-        // 2. A smaller Cylinder to represent the physical bounds if it falls over completely
+        // Use a wheel-like donut body:
+        // 1. A main Cylinder aligned with the visual torus rim
+        // 2. A few small rim spheres to approximate a torus and keep contact stable
         
-        const sphereRadius = 1.45;
-        const sphereShape = new CANNON.Sphere(sphereRadius);
+        // Approximate torus dimensions
+        const torusRadius = 1.0;   // from TorusGeometry
+        const tubeRadius  = 0.45;
+        const outerRadius = torusRadius + tubeRadius * 0.6; // a bit inside the visual edge
         
         this.body = new CANNON.Body({
-            mass: 50, // Slightly heavier for better momentum
-            material: new CANNON.Material({ friction: 0.3, restitution: 0.0 }) // Lower friction to prevent sticking, we handle grip manually
+            mass: 50,
+            material: new CANNON.Material({ friction: 0.35, restitution: 0.0 })
         });
         
-        // Add Sphere (Main roller)
-        this.body.addShape(sphereShape, new CANNON.Vec3(0, 0, 0));
+        // Main wheel cylinder (axis along X to match visual)
+        const wheelShape = new CANNON.Cylinder(outerRadius, outerRadius, tubeRadius * 2.0, 20);
+        const qWheel = new CANNON.Quaternion();
+        // Rotate so cylinder's Y-axis aligns with world X-axis (wheel axle)
+        qWheel.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -Math.PI / 2);
+        this.body.addShape(wheelShape, new CANNON.Vec3(0, 0, 0), qWheel);
 
-        // Add hidden Cylinder (for falling collision bounds)
-        // Slightly smaller radius so it doesn't interfere with smooth rolling
-        const cylRadius = 1.2;
-        const cylWidth = 0.9;
-        const cylinderShape = new CANNON.Cylinder(cylRadius, cylRadius, cylWidth, 16);
-        const q = new CANNON.Quaternion();
-        q.setFromAxisAngle(new CANNON.Vec3(0,0,1), -Math.PI / 2); // Align with X-axis
-        this.body.addShape(cylinderShape, new CANNON.Vec3(0,0,0), q);
+        // Add a few small spheres around the rim to better approximate a torus contact
+        const rimRadius = outerRadius;
+        const rimBallRadius = tubeRadius * 0.7;
+        const rimOffsets = [
+            new CANNON.Vec3(0, 0,  rimRadius),
+            new CANNON.Vec3(0, 0, -rimRadius),
+            new CANNON.Vec3(0,  rimRadius, 0),
+            new CANNON.Vec3(0, -rimRadius, 0)
+        ];
+        const rimBallShape = new CANNON.Sphere(rimBallRadius);
+        rimOffsets.forEach((offset) => {
+            this.body.addShape(rimBallShape, offset);
+        });
 
         this.body.position.copy(position);
         
-        this.body.linearDamping = 0.5; // Heavy drag
-        this.body.angularDamping = 0.5; // Heavy rotational drag
+        // Damping tuned for stable rolling without jitter
+        this.body.linearDamping = 0.35;
+        this.body.angularDamping = 0.25;
         
         // CCD to prevent tunneling at high speeds
         this.body.ccdSpeedThreshold = 1.0;
@@ -169,13 +186,13 @@ export class Donut {
         console.log(`[Donut] Boost World Dir: ${inputDir.x.toFixed(2)}, ${inputDir.y.toFixed(2)}, ${inputDir.z.toFixed(2)} | Intensity: ${intensity.toFixed(2)}`);
 
         // Calculate boost params
-        const maxBoostDuration = 0.5; 
-        const minBoostDuration = 0.1; 
+        const maxBoostDuration = 0.4; 
+        const minBoostDuration = 0.08; 
         this.boostDuration = minBoostDuration + (intensity * (maxBoostDuration - minBoostDuration));
         
         // Reduced boost power to keep speed manageable
         const baseBoost = 3; 
-        const maxBoost = 7; 
+        const maxBoost = 6; 
         this.boostMagnitude = baseBoost + (intensity * (maxBoost - baseBoost));
         
         this.boostDirection.copy(inputDir);
@@ -186,8 +203,6 @@ export class Donut {
         // Auto-align the physics velocity to the swipe direction to ensure we follow the path
         const speed = this.body.velocity.length();
         if (speed > 1) {
-            // Redirect current momentum completely to new direction to strictly follow path
-            // This prevents "drifting" from old momentum
             const newVel = inputDir.clone().scale(speed);
             this.body.velocity.copy(newVel);
         }
@@ -198,6 +213,17 @@ export class Donut {
         this.flattenFactor = 0;
         
         this.assets.playSound('jump');
+    }
+
+    // Configure a new world-space path for the donut to follow
+    setPath(threePoints) {
+        if (!this.isRolling || !threePoints || threePoints.length < 2) return;
+
+        this.pathPoints = threePoints.map(p => new CANNON.Vec3(p.x, p.y, p.z));
+        this.pathIndex = 0;
+        this.pathFollowActive = true;
+        this.boostActive = false; // hand control over to path-follow
+        console.log(`[Donut] Path set with ${this.pathPoints.length} points`);
     }
 
     update(time, dt) {
@@ -213,6 +239,62 @@ export class Donut {
         } else {
             const vel = this.body.velocity;
             const speed = vel.length();
+            
+            // --- Path-following: steer velocity along drawn path ---
+            if (this.pathFollowActive && this.pathPoints.length >= 2) {
+                const currentPos = this.body.position;
+                let target = this.pathPoints[this.pathIndex];
+
+                // Advance along path when close to current target
+                const dx = target.x - currentPos.x;
+                const dz = target.z - currentPos.z;
+                const distXZ = Math.hypot(dx, dz);
+
+                if (distXZ < 1.0 && this.pathIndex < this.pathPoints.length - 1) {
+                    this.pathIndex++;
+                    target = this.pathPoints[this.pathIndex];
+                }
+
+                // Compute direction in XZ plane
+                const dir = new CANNON.Vec3(
+                    target.x - currentPos.x,
+                    0,
+                    target.z - currentPos.z
+                );
+                const dirLen = Math.hypot(dir.x, dir.z);
+
+                if (dirLen > 0.001) {
+                    dir.scale(1 / dirLen, dir);
+
+                    // Align horizontal velocity with path direction
+                    const horizSpeed = Math.hypot(vel.x, vel.z);
+                    const desiredSpeed = Math.max(5, Math.min(horizSpeed + 5 * distXZ, 12)); // speed up a bit along path
+
+                    vel.x = dir.x * desiredSpeed;
+                    vel.z = dir.z * desiredSpeed;
+
+                    // Spin consistent with linear speed (approximate rolling radius)
+                    const rollRadius = 1.3;
+                    const omegaMag = desiredSpeed / rollRadius;
+                    const axleDir = new CANNON.Vec3(1, 0, 0);
+                    this.body.quaternion.vmult(new CANNON.Vec3(1,0,0), axleDir);
+                    axleDir.normalize();
+                    this.body.angularVelocity.set(
+                        axleDir.x * omegaMag,
+                        axleDir.y * omegaMag,
+                        axleDir.z * omegaMag
+                    );
+                }
+
+                // Stop following when we reach final point
+                const finalTarget = this.pathPoints[this.pathPoints.length - 1];
+                const fx = finalTarget.x - currentPos.x;
+                const fz = finalTarget.z - currentPos.z;
+                if (Math.hypot(fx, fz) < 1.0 && this.pathIndex >= this.pathPoints.length - 1) {
+                    this.pathFollowActive = false;
+                    console.log('[Donut] Path follow complete');
+                }
+            }
             
             // --- Determine Axle and Up ---
             const axle = new CANNON.Vec3(1, 0, 0);
@@ -298,9 +380,8 @@ export class Donut {
                 }
                 
                 // 5. Downforce (Grip)
-                // Keeps the sphere grounded on slopes
-                // Reduced from 40 to 20 to prevent erratic jitter on uneven terrain
-                this.body.applyForce(new CANNON.Vec3(0, -20 * this.body.mass, 0), this.body.position);
+                // Keeps the donut grounded on slopes
+                this.body.applyForce(new CANNON.Vec3(0, -25 * this.body.mass, 0), this.body.position);
             }
 
             // --- Velocity Clamping ---

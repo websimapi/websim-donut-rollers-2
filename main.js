@@ -212,21 +212,8 @@ function endGesture() {
 
         // Use 3D projected path for accurate direction relative to terrain/camera
         if (pathPoints3D.length >= 2) {
-            const start3D = pathPoints3D[0];
-            const end3D = pathPoints3D[pathPoints3D.length - 1];
-            
-            const boostDir = new THREE.Vector3().subVectors(end3D, start3D);
-            boostDir.y = 0; // Flatten trajectory to horizontal plane
-            
-            // Map distance to intensity (e.g. 40 world units = max power)
-            const worldDist = boostDir.length();
-            const intensity = Math.min(worldDist / 40, 1.0); 
-            
-            if (intensity > 0.05) {
-                boostDir.normalize();
-                console.log(`[Gesture] Swipe Action 3D. Dist=${worldDist.toFixed(1)} Intensity=${intensity.toFixed(2)}`);
-                donut.boost(boostDir, intensity);
-            }
+            console.log(`[Gesture] Path Action 3D. points=${pathPoints3D.length}`);
+            donut.setPath(pathPoints3D);
         } else if (dist > 30) {
             // Fallback to screen space if 3D projection failed
             const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -252,6 +239,9 @@ function endGesture() {
 
         } else if (dt < 300) {
             // Simple Tap - Small forward hop relative to camera
+            const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            camForward.y = 0; 
+            camForward.normalize();
             console.log(`[Gesture] Tap Action.`);
             donut.boost(camForward, 0.4); 
         }
